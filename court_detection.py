@@ -90,13 +90,121 @@ def get_court_by_color(green_img, original_img):
     return original_img
 
 def get_court_line_by_line_fitting(white_img, original_img):
-    line_mask = np.zeros_like(white_img)
-    line_mask[320:960, 680] = 1
-    print(line_mask)
+    original_img = np.array(original_img, dtype=np.float32) / 255
 
-for video_id in range(1, 800+1):
+    white_img = np.array(white_img, dtype=np.float32)
+    y_top, y_thick, y_range = 700, 5, 300
+    xl, xr = 360, 920
 
-    # img0 = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")[0]
+    # Get the cover area and squeeze to an array with width 1 by or operation
+    covers = np.array([
+        np.logical_or.reduce([
+            white_img[y_top-yr+yt:y_top-yr+yt+1, int(xl+yr/4):int(xr-yr/4)]
+            for yt in range(y_thick)
+        ]).sum()
+        for yr in range(y_range)
+    ])
+
+    best_y_tops_amount = 3
+    best_y_tops = []
+    for _ in range(best_y_tops_amount):
+        best_y_tops.append(y_top-np.argmax(covers))
+        covers[max(0, np.argmax(covers)-10):min(np.argmax(covers)+10, y_range)] = 0  # Remove the already-selected y_top
+    best_y_tops.sort()
+
+    line_masks = []
+    for byt_id in range(best_y_tops_amount):
+        lm = line_mask = np.zeros_like(white_img, dtype=np.float32)
+        lm[best_y_tops[byt_id]:best_y_tops[byt_id]+y_thick, int(xl+(y_top-best_y_tops[byt_id])/4):int(xr-(y_top-best_y_tops[byt_id])/4)] += 1.0
+        line_masks.append(lm)
+
+    # plt.figure(figsize=(16, 4+2*best_y_tops_amount))
+    # plt.suptitle(f"{video_id}.mp4", fontsize=16)
+    # plt.subplot(best_y_tops_amount, 4, 1)
+    # plt.title("white_img")
+    # plt.imshow(white_img)
+    # plt.axis("off")
+
+    # for byt_id in range(best_y_tops_amount):
+    #     plt.subplot(best_y_tops_amount, 4, byt_id*4+2)
+    #     plt.title("line_mask")
+    #     plt.imshow(line_masks[byt_id])
+    #     plt.axis("off")
+    #     plt.subplot(best_y_tops_amount, 4, byt_id*4+3)
+    #     plt.title("combine_img_1")
+    #     plt.imshow(white_img * line_masks[byt_id])
+    #     plt.axis("off")
+    #     plt.subplot(best_y_tops_amount, 4, byt_id*4+4)
+    #     plt.title("original_img * line_mask")
+    #     line_masks[byt_id] = np.dstack([line_masks[byt_id], line_masks[byt_id]*0, line_masks[byt_id]*0])
+    #     plt.imshow(cv2.addWeighted(original_img, 0.8, line_masks[byt_id], 1, 0))
+    #     plt.axis("off")
+
+    # plt.tight_layout()
+    # # plt.show()
+    # plt.savefig(f"court_output/{video_id}", dpi=500)
+    # plt.close()
+
+    # Get both ends of the front service line
+    y_top, y_thick = best_y_tops[0], 3
+    xl, xr = 480, 800
+    while True:
+        now_covered_area = np.logical_or.reduce([
+            white_img[y_top+yt:y_top+yt+1, (xl-2):(xr+2)]
+            for yt in range(y_thick)
+        ]).sum()
+        xl_expand_covered_area = np.logical_or.reduce([
+            white_img[y_top+yt:y_top+yt+1, (xl-2)-1:(xr+2)]
+            for yt in range(y_thick)
+        ]).sum()
+        xr_expand_covered_area = np.logical_or.reduce([
+            white_img[y_top+yt:y_top+yt+1, (xl-2):(xr+2)+1]
+            for yt in range(y_thick)
+        ]).sum()
+        if xl_expand_covered_area > now_covered_area: xl -= 1
+        elif xr_expand_covered_area > now_covered_area: xr += 1
+        else: break
+    blur = cv2.GaussianBlur(white_img[y_top-15:y_top+15, xl-15:xl+15], (15, 15), 0)
+    fsll = [ xl-15+np.argmax(blur)%30, y_top-15+int(np.argmax(blur)/30) ]  # fsll = front_service_line_left
+    blur = cv2.GaussianBlur(white_img[y_top-15:y_top+15, xr-15:xr+15], (15, 15), 0)
+    fslr = [ xr-15+np.argmax(blur)%30, y_top-15+int(np.argmax(blur)/30) ]  # fslr = front_service_line_right
+    
+    # Get the middle point of the doubles back service line
+    y_top = best_y_tops[1]
+    blur = cv2.GaussianBlur(white_img[y_top-10:y_top+10, 640-15:640+15], (25, 9), 0)
+    dbslm = [ 640-15+np.argmax(blur)%30, y_top-10+int(np.argmax(blur)/30) ]  # dbslm = doubles_back_service_line_middle
+    
+    # Get the middle point of the singles back service line
+    y_top = best_y_tops[2]
+    blur = cv2.GaussianBlur(white_img[y_top-10:y_top+10, 640-15:640+15], (25, 9), 0)
+    sbslm = [ 640-15+np.argmax(blur)%30, y_top-10+int(np.argmax(blur)/30) ]  # sbslm = singles_back_service_line_middle
+
+    if dbslm[0] != sbslm[0]:
+        fslmx = int((fsll[0] + fslr[0]) / 2)  # fslm = front_service_line_middle_x
+        if   (dbslm[0]-fslmx)*(sbslm[0]-fslmx) < 0 : dbslm[0], sbslm[0] = fslmx, fslmx
+        elif abs(dbslm[0]-fslmx) < abs(sbslm[0]-fslmx): sbslm[0] = dbslm[0]
+        elif abs(dbslm[0]-fslmx) > abs(sbslm[0]-fslmx): dbslm[0] = sbslm[0]
+
+    plt.suptitle(f"{video_id}.mp4", fontsize=16)
+    # plt.subplot(1, 2, 1)
+    plt.title("white_img")
+    plt.imshow(white_img)
+    plt.plot((fsll[0], fslr[0]), (fsll[1], fslr[1]), marker='o')
+    plt.plot((dbslm[0], sbslm[0]), (dbslm[1], sbslm[1]), marker='o')
+    plt.axis([dbslm[0]-30, sbslm[0]+30, sbslm[1]+10, dbslm[1]-10])
+    plt.axis("off")
+
+    plt.tight_layout()
+    plt.show()
+    # plt.savefig(f"court_output/{video_id}", dpi=500)
+    plt.close()
+
+    
+
+from misc import formal_list
+for video_id in formal_list:
+
+    # img0 = mmcv.VideoReader(f"data/train/{video_id}/{video_id}.mp4")[0]
     # img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2RGB)
     # img1 = img0[:,:,1]
     # img2 = img1 > (255-32)
@@ -114,34 +222,33 @@ for video_id in range(1, 800+1):
     # plt.subplot(336).imshow(img4)
     # plt.subplot(338).imshow(img5)
 
-    original_img = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")[0]
+    original_img = mmcv.VideoReader(f"data/train/{video_id}/{video_id}.mp4")[0]
     original_img = cv2.cvtColor(original_img, cv2.COLOR_BGR2RGB)
     main_colors_img, white_img, green_img = convert_to_main_colors(original_img)
     # court_polygon_img = get_court_by_color(green_img, original_img)
-
     get_court_line_by_line_fitting(white_img, original_img)
 
-    plt.suptitle(f"{video_id:05}.mp4", fontsize=16)
+    # plt.suptitle(f"{video_id}.mp4", fontsize=16)
 
-    plt.subplot(231)
-    plt.imshow(original_img)
-    plt.title("original_img")
-    plt.axis('off')
+    # plt.subplot(231)
+    # plt.imshow(original_img)
+    # plt.title("original_img")
+    # plt.axis("off")
 
-    plt.subplot(234)
-    plt.title("main_colors_img")
-    plt.imshow(main_colors_img)
-    plt.axis('off')
+    # plt.subplot(234)
+    # plt.title("main_colors_img")
+    # plt.imshow(main_colors_img)
+    # plt.axis("off")
 
-    plt.subplot(232)
-    plt.title("white_img")
-    plt.imshow(white_img)
-    plt.axis('off')
+    # plt.subplot(232)
+    # plt.title("white_img")
+    # plt.imshow(white_img)
+    # plt.axis("off")
 
-    plt.subplot(233)
-    plt.title("green_img")
-    plt.imshow(green_img)
-    plt.axis('off')
+    # plt.subplot(233)
+    # plt.title("green_img")
+    # plt.imshow(green_img)
+    # plt.axis("off")
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
