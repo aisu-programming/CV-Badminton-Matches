@@ -1,31 +1,4 @@
-# main_colors = [
-#     (  0,   0,   0),  # Black
-#     (239, 239, 239),  # White
-#     (192,  16,  16),  # Red
-#     ( 96, 224,  96),  # Light Green
-#     ( 32, 176,  64),  # Dark Green
-#     ( 32,  48, 192),  # Blue
-# ]
-
-# main_colors_white = [
-#     0,  # Black
-#     1,  # White
-#     0,  # Red
-#     0,  # Light Green
-#     0,  # Dark Green
-#     0,  # Blue
-# ]
-
-# main_colors_green = [
-#     0,  # Black
-#     0,  # White
-#     0,  # Red
-#     1,  # Light Green
-#     1,  # Dark Green
-#     0,  # Blue
-# ]
-
-main_colors = [
+all_colors = [
     ( 12,  12,  12),  # Black
     ( 48, 184, 152),  # Light Green 1
     (120, 192, 160),  # Light Green 2
@@ -44,7 +17,14 @@ main_colors = [
     (148, 244, 228),  # White 3
 ]
 
-main_colors_white = [
+court_colors = [
+    (160, 255, 160),  # Light Green
+    ( 96, 192,  96),  # Dark Green
+    (208, 255, 208),  # White
+    (  0,   0,   0),  # Black
+]
+
+all_colors_white = [
     0, # Black
     0, # Light Green 1
     0, # Light Green 2
@@ -63,7 +43,7 @@ main_colors_white = [
     1, # White 3
 ]
 
-main_colors_green = [
+all_colors_green = [
     0, # Black
     1, # Light Green 1
     1, # Light Green 2
@@ -81,3 +61,8 @@ main_colors_green = [
     0, # White 2
     0, # White 3
 ]
+
+
+court_colors_green = [ 1, 1, 0, 0 ]
+
+court_colors_white = [ 0, 0, 1, 0 ]
