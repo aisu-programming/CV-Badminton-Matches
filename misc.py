@@ -35,5 +35,12 @@ def plot_first_frames():
     plt.savefig(f"head_{amount*amount}_first_frame", dpi=500)
     plt.close()
 
+def split_video(video_id):
+    os.makedirs(f"ball_output/{video_id:05}", exist_ok=True)
+    video = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
+    for img_id, img in enumerate(video):
+        cv2.imwrite(f"ball_output/{video_id:05}/{img_id:04}.jpg", img)
+
 # get_formal_list()
 # plot_first_frames()
+# split_video(1)
