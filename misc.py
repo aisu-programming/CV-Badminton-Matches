@@ -1,6 +1,7 @@
 import os
 import cv2
 import mmcv
+import numpy as np
 import matplotlib.pyplot as plt
 
 formal_list = [
@@ -41,6 +42,21 @@ def split_video(video_id):
     for img_id, img in enumerate(video):
         cv2.imwrite(f"ball_output/{video_id:05}/{img_id:04}.jpg", img)
 
+def darken_video(video_id):
+    videoReader = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
+    width, height = videoReader.width, videoReader.height
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    fps = videoReader.fps
+    size = (width, height)
+    videoWriter = cv2.VideoWriter(f"data/train/{video_id:05}/{video_id:05}_darken.mp4", fourcc, fps, size)
+    video = videoReader[:]
+    for frame in video:
+        frame = np.uint8(np.minimum((frame/255*1.3), 1.0) **2 *255)
+        videoWriter.write(frame)
+    videoWriter.release()
+    return
+
 # get_formal_list()
 # plot_first_frames()
 # split_video(1)
+# darken_video(1)
