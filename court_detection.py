@@ -169,12 +169,12 @@ def get_court_line_by_line_fitting(white_mask):
     return [ ofsll, ofslr, ofsllb, ofslrb, fsll, fslr, fsllb, fslrb, dbsll, dbslr, dbsllb, dbslrb, sbsll, sbslr, sbsllb, sbslrb ]
 
 
-from misc import formal_list
+from misc import train_formal_list
 
 problem_list = [ 197, 207, 278, 446, 453, 688 ]
 
 counter, amount = 0, 10
-for video_id in formal_list:
+for video_id in train_formal_list:
 
     if video_id in [ 2, 64, 153, 156, 170, 212, 290, 293, 378, 431, 527, 678, 697, 711, 712, 722 ]:
         original_img = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")[-1]

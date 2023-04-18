@@ -3,13 +3,13 @@ import cv2
 import json
 import numpy as np
 from tqdm import tqdm
-from misc import formal_list
+from misc import train_formal_list
 
 
 bg_t_imgs = background_type_images = []
 bg_cls    = background_classification = {}
 
-for video_id in tqdm(formal_list, desc="Clustering backgrounds"):
+for video_id in tqdm(train_formal_list, desc="Clustering backgrounds"):
 
     img = cv2.imread(f"output/background/avg_without_players/{video_id:05}.png")
 
