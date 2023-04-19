@@ -1,14 +1,15 @@
 # CV-Badminton-Matches
 AI CUP 2023 - Teaching Computers to Watch Badminton Matches
 
-## 球員偵測
-MMPose
-
-## 球場偵測
-1. 邊緣檢測法: X
+## Court detection
+1. Edge detection (Canny): X
 2. Homography: X
-3. 工人智慧硬幹: O
+3. DIY: O
 
-## 球體偵測
+## Ball detection
 1. Blob detection: X
 2. TrackNetv2: O
+
+## Player pose detection
+(Need to do after court detection)
+- MMDetection + MMPose

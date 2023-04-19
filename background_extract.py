@@ -4,7 +4,7 @@ import mmcv
 import itertools
 import numpy as np
 from tqdm import tqdm
-from misc import formal_list
+from misc import train_formal_list
 from mmdet.apis import inference_detector, init_detector
 
 
@@ -39,7 +39,14 @@ def average_method_with_masked_players(video_id):  # Almost perfect
     os.makedirs(f"output/background/avg_without_players", exist_ok=True)
     videoReader = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
     width, height = videoReader.width, videoReader.height
-    video = videoReader[:]
+
+    if   video_id == 678: video = videoReader[36:]
+    elif video_id == 746: video = videoReader[:-17]
+    # elif video_id == 521: pass
+    # elif video_id == 391: pass
+    # elif video_id == 265: pass
+    else                : video = videoReader[:]
+
     for frame_id in tqdm(range(len(video)), desc=f"{video_id:05} - Masking players"):
         mmdet_results = inference_detector(DET_MODEL, video[frame_id])[0]
         mmdet_results = sorted(mmdet_results,
@@ -92,10 +99,7 @@ def mode_method_with_masked_players(video_id):  # ?
 
 
 if __name__ == "__main__":
-    for video_id in formal_list:
-
-        if video_id < 286: continue
-
+    for video_id in train_formal_list:
         # average_method(video_id)
         # mode_method(video_id)
         average_method_with_masked_players(video_id)

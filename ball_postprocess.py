@@ -5,8 +5,8 @@ import pandas as pd
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter
 
-from misc import formal_list
-from ball_detection_33 import main as predict
+from misc import train_formal_list
+from ball_detection_33 import main as detect_ball
 
 
 def remove_noise(ball_df:pd.DataFrame):
@@ -138,11 +138,8 @@ def output_video(video_id, mode="33"):
 
 
 if __name__ == "__main__":
-    for video_id in formal_list:
-
-        if video_id != 222 and video_id < 261: continue
-
-        predict(video_id)
+    for video_id in train_formal_list:
+        detect_ball(video_id)
         postprocess(video_id, "33")
         # output_video(video_id, "33")
     pass
