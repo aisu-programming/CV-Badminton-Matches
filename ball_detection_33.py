@@ -85,7 +85,7 @@ def main(video_id):
 	videoName = f"data/train/{video_id:05}/{video_id:05}.mp4"
 	load_weights = "TrackNetv2/mimo/model906_30"
 
-	#Loss function
+	# Loss function
 	def custom_loss(y_true, y_pred):
 		loss = (-1)*(K.square(1 - y_pred) * y_true * K.log(K.clip(y_pred, K.epsilon(), 1)) + K.square(y_pred) * (1 - y_true) * K.log(K.clip(1 - y_pred, K.epsilon(), 1)))
 		return K.mean(loss)

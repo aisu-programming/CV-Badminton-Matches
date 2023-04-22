@@ -1,8 +1,9 @@
 import os
 import cv2
-import mmcv
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 train_formal_list = [
     1, 2, 3, 4, 5, 8, 9, 10, 11, 14, 17, 22, 23, 24, 25, 26, 27, 28, 29, 30, 
@@ -22,12 +23,14 @@ def get_formal_list():
     print([ int(filename.split('.')[0]) for filename in formal_mp4s ])
 
 def view_video_infos():
+    import mmcv
     for video_filename in os.listdir("data/train_mp4/informal"):
         video = mmcv.VideoReader(f"data/train_mp4/informal/{video_filename}")
         if video.width != 1280 or video.height != 720:
             print(video_filename, video.width, video.height)
 
 def plot_first_frames():
+    import mmcv
     amount = 7
     plt.figure(figsize=(16*amount, 9*amount))
     for video_id in range(1, amount*amount+1):
@@ -41,13 +44,8 @@ def plot_first_frames():
     plt.savefig(f"head_{amount*amount}_first_frame", dpi=500)
     plt.close()
 
-def split_video(video_id):
-    os.makedirs(f"ball_output/{video_id:05}", exist_ok=True)
-    video = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
-    for img_id, img in enumerate(video):
-        cv2.imwrite(f"ball_output/{video_id:05}/{img_id:04}.jpg", img)
-
 def darken_video(video_id):
+    import mmcv
     videoReader = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
     width, height = videoReader.width, videoReader.height
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -62,6 +60,7 @@ def darken_video(video_id):
     return
 
 def crop_video(video_id):
+    import mmcv
     videoReader = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
     width, height = videoReader.width, videoReader.height
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -106,13 +105,97 @@ def plot_background_lines():
         cv2.destroyWindow(str(bg_id))
     return
 
+def check_length_match():
+    for video_id in tqdm(train_formal_list):
+        video_ori_frame_count  = cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT)
+        video_pose_frame_count = cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}_pose.mp4").get(cv2.CAP_PROP_FRAME_COUNT)
+        if not (video_ori_frame_count == video_pose_frame_count):
+            print(video_id, video_ori_frame_count, video_pose_frame_count)
+    return
+
+def patch_ball_csv():
+    for video_id in tqdm(train_formal_list):
+        video_ori_frame_count  = cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT)
+        video_ball_frame_count = len(pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv").values)
+        if video_ori_frame_count != video_ball_frame_count:
+            with open(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv", mode='a') as csv_file:
+                for i in range(int(video_ori_frame_count-video_ball_frame_count)):
+                    csv_file.write(str(video_ball_frame_count+i))
+                    csv_file.write(',0'*2 + ',0.0' + ',0'*2 + ','*6 + '\n')
+        video_ball_frame_count = len(pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv").values)
+        assert video_ori_frame_count == video_ball_frame_count
+    return
+
+def combine_ball_and_pose_csv():
+    for video_id in tqdm(train_formal_list):
+        pose_csv = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv")
+        ball_csv = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv")
+        # pose_csv = pose_csv.drop([ "Frame", "Player A confidence", "Player B confidence" ], axis=1)
+        pose_csv = pose_csv.drop([ "Frame" ], axis=1)
+        pose_csv_columns = pose_csv.columns
+        for column in pose_csv_columns:
+            if   " X" in column: pose_csv[[column]] = pose_csv[[column]] / 1280
+            elif " Y" in column: pose_csv[[column]] = pose_csv[[column]] / 720
+        ball_csv = ball_csv[[ "Visibility", "X", "Y" ]]
+        ball_csv[["X"]] = ball_csv[["X"]] / 1280
+        ball_csv[["Y"]] = ball_csv[["Y"]] / 720
+        combined_csv = pd.concat([ pose_csv, ball_csv ], axis=1)
+        combined_csv.index.set_names("Frame", inplace=True)
+        combined_csv = combined_csv.fillna(0)
+        combined_csv.to_csv(f"data/train/{video_id:05}/{video_id:05}_combined.csv")
+    return
+
+def convert_ground_truth():
+    # from scipy.ndimage import gaussian_filter
+    for video_id in tqdm(train_formal_list):
+        frame_count = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
+        hit_data    = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter"]].values
+        hit_A = np.zeros(frame_count, dtype=np.uint8)
+        hit_B = np.zeros(frame_count, dtype=np.uint8)
+        flag = None
+        for hf, htr in hit_data:
+            if flag is None:
+                flag, last_hf = htr, hf
+            elif flag == 'A':
+                hit_A[last_hf:hf] = 1
+                flag, last_hf = htr, hf
+            elif flag == 'B':
+                hit_B[last_hf:hf] = 1
+                flag, last_hf = htr, hf
+            else:
+                raise Exception
+        if   flag == 'A': hit_A[last_hf:] = 1
+        elif flag == 'B': hit_B[last_hf:] = 1
+        hit_B = hit_B * 2
+
+        ground_truth = pd.DataFrame({
+            "Frame" : pd.Series(range(frame_count)),
+            "Hitter": pd.Series(hit_A+hit_B),
+        })
+        ground_truth = ground_truth.set_index("Frame")
+        ground_truth.to_csv(f"data/train/{video_id:05}/{video_id:05}_S2_hit.csv")
+    return
+
+def split_video_into_images():
+    for video_id in tqdm(train_formal_list):
+        import mmcv
+        os.makedirs(f"data/train/{video_id:05}/images", exist_ok=True)
+        video = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
+        for img_id, img in enumerate(video):
+            cv2.imwrite(f"data/train/{video_id:05}/images/{img_id:04}.jpg", img)
+    return
+
 
 if __name__ == "__main__":
     # get_formal_list()
     # plot_first_frames()
-    # split_video(1)
     # darken_video(1)
     # crop_video(746)
     # plot_image()
-    plot_background_lines()
+    # plot_background_lines()
+    # check_length_match()
+    # patch_ball_csv()
+    # combine_ball_and_pose_csv()
+    convert_ground_truth()
+    # split_video_into_images()
     pass

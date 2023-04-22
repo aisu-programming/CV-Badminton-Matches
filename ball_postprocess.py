@@ -114,7 +114,7 @@ def postprocess(video_id, mode="33"):
     ball_df = remove_noise(ball_df)
     ball_df = remove_detecting_mistake(ball_df)
     # ball_df = patch_missing_values(ball_df)
-    # ball_df = ball_df.drop(["Smoothed Vis", "Group ID", "Smoothed X", "Smoothed Y", "Diff", "Need Patch"], axis=1)
+    # ball_df = ball_df.drop(["Smoothed Vis", "Time", "Group ID", "Smoothed X", "Smoothed Y", "Diff", "Need Patch"], axis=1)
     ball_df.to_csv(f"data/train/{video_id:05}/{video_id:05}_ball_{mode}_adj.csv")
     return
 

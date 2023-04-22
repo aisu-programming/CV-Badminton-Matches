@@ -1,6 +1,8 @@
 import cv2
 import mmcv
 import warnings
+import winsound
+import numpy as np
 from tqdm import tqdm
 
 from misc import train_formal_list
@@ -34,35 +36,50 @@ POSE_MODEL = init_pose_model(MMPOSE_CONFIG_FILE, MMPOSE_CHECKPOINT, device=DEVIC
 
 
 
-def get_player_condition_v1(person_results, court_yt, court_yb):
-    player_y = person_results[0]["bbox"][3]
-    if abs(player_y-court_yt) < abs(player_y-court_yb):
-        return 'A'
-    else:
-        return 'B'
-
-
-def get_player_condition_v2(person_results, previous_player_records):
-    bbox   = person_results[0]["bbox"]
-    A_bbox = previous_player_records['A']["bbox"]
-    B_bbox = previous_player_records['B']["bbox"]
-    xl,     xr,   yt,   yb =   bbox[0],   bbox[2],   bbox[1],   bbox[3]
+def classify_player(pose_results, previous_player_pose):
+    person_A_diff, person_B_diff = [], []
+    A_bbox = previous_player_pose['A']["bbox"]
+    B_bbox = previous_player_pose['B']["bbox"]
     A_xl, A_xr, A_yt, A_yb = A_bbox[0], A_bbox[2], A_bbox[1], A_bbox[3]
     B_xl, B_xr, B_yt, B_yb = B_bbox[0], B_bbox[2], B_bbox[1], B_bbox[3]
-    A_diff = (xl-A_xl)**2 + (xr-A_xr)**2 + (yt-A_yt)**2 + (yb-A_yb)**2
-    B_diff = (xl-B_xl)**2 + (xr-B_xr)**2 + (yt-B_yt)**2 + (yb-B_yb)**2
-    if A_diff < B_diff:
-        return 'A'
-    else:
-        return 'B'
+    player_pose = { 'A': None, 'B': None }
+    for person in pose_results:
+        bbox = person["bbox"]
+        xl, xr, yt, yb = bbox[0], bbox[2], bbox[1], bbox[3]
+        A_diff = (xl-A_xl)**2 + (xr-A_xr)**2 + (yt-A_yt)**2 + (yb-A_yb)**2
+        B_diff = (xl-B_xl)**2 + (xr-B_xr)**2 + (yt-B_yt)**2 + (yb-B_yb)**2
+        if A_diff < B_diff: B_diff = np.Infinity
+        else              : A_diff = np.Infinity
+        person_A_diff.append(A_diff)
+        person_B_diff.append(B_diff)
+
+    # Debug
+    if (np.min(person_A_diff) != np.Infinity and np.min(person_A_diff) > 8000) or \
+       (np.min(person_B_diff) != np.Infinity and np.min(person_B_diff) > 8000):
+        winsound.Beep(300, 1000)
+        print(person_A_diff, person_B_diff)
+
+    if np.min(person_A_diff) != np.Infinity:
+        player_pose['A'] = pose_results[np.argmin(person_A_diff)]
+    if np.min(person_B_diff) != np.Infinity:
+        player_pose['B'] = pose_results[np.argmin(person_B_diff)]
+    return player_pose
+
+
+def classify_player_without_previous_records(pose_results, court_values):
+    bbox_yb = pose_results[0]["bbox"][3]
+    _, court_yt, court_yb = court_values
+    player_pose = { 'A': None, 'B': None }
+    if abs(court_yt-bbox_yb) < abs(court_yb-bbox_yb): player_pose['A'] = pose_results[0]
+    else:                                             player_pose['B'] = pose_results[0]
+    return player_pose
 
 
 def in_court(person, court_values, condition_values):
-    court_xm, court_ym, court_yt, court_yb                 = court_values
+    court_xm, court_yt, court_yb                           = court_values
     left_ratio, left_constant, right_ratio, right_constant = condition_values
     # Get the inner point
     bbox = person["bbox"]
-    bbox_y = bbox[1] if abs(bbox[1]-court_ym) < abs(bbox[3]-court_ym) else bbox[3]
     bbox_x = bbox[0] if abs(bbox[0]-court_xm) < abs(bbox[2]-court_xm) else bbox[2]
     if (court_yt-30 < bbox[1] < court_yb) or \
        (court_yt-30 < bbox[3] < court_yb):                             # Between yt & yb
@@ -105,8 +122,9 @@ def main(video_id):
         csv_file.write('\n')
 
         # Values for checking in-court or not
-        bg_id = background_id = img_to_background[video_id]
-        bgd   = background_details[bg_id]
+        bg_id  = background_id = img_to_background[video_id]
+        bg_img = cv2.imread(f"data/train_background/{bg_id:05}.png")
+        bgd    = background_details[bg_id]
         court_yt, court_yb = bgd["y_top"], bgd["y_bottom"]
         court_ym = (court_yt+court_yb) / 2
         court_xlt, court_xlb = bgd["x_left_top"],  bgd["x_left_bottom"]
@@ -118,47 +136,37 @@ def main(video_id):
         left_constant = court_lt[0] - left_ratio*court_lt[1]
         right_ratio    = (court_rt[0]-court_rb[0]) / (court_rt[1]-court_rb[1])
         right_constant = court_rt[0] - right_ratio*court_rt[1]
-        court_values     = (court_xm, court_ym, court_yt, court_yb)
+        court_values     = (court_xm, court_yt, court_yb)
         condition_values = (left_ratio, left_constant, right_ratio, right_constant)
 
-        previous_player_records = {}
+        previous_player_pose = { 'A': None, 'B': None }
         for frame_id, current_frame in tqdm(enumerate(videoReader), desc=f"[{video_id:05}] Detecting pose"):
-            # get the detection results of current frame
-            # the resulting box is (x1, y1, x2, y2)
-            mmdet_results = inference_detector(DET_MODEL, current_frame)
 
-            # keep the person class bounding boxes.
-            person_results = process_mmdet_results(mmdet_results, DET_CAT_ID)
-
-            # width_anchor, height_anchor = videoReader.width/2, videoReader.height*(2/3)
-            # person_results = person_results[:5]
-            # person_results = sorted(person_results, key=lambda person: (
-            #     min(abs(person["bbox"][0]-width_anchor), abs(person["bbox"][2]-width_anchor))**2 *0.5 +
-            #     min(abs(person["bbox"][1]-height_anchor), abs(person["bbox"][3]-height_anchor))**2))
-            # person_results = sorted(person_results[:2], key=lambda person: person["bbox"][3])
-
-            person_results = list(filter(lambda person: person["bbox"][4] > 0.8, person_results))
-            person_results = list(filter(
-                lambda person: (person["bbox"][2]-person["bbox"][0])*(person["bbox"][3]-person["bbox"][1]) > 500, person_results))
-            person_results = list(filter(
-                lambda person: in_court(person, court_values, condition_values), person_results))
-            
-
-            # Exceptions
-            if (video_id, frame_id) in [ (22, 144), (25, 185), (25, 186), (82, 66) ]:
-                person_results = person_results[:2]
-            
-
-            if len(person_results) == 2:
-                person_results = sorted(person_results, key=lambda person: person["bbox"][3])
-            elif len(person_results) == 1:
-                # player_condition = get_player_condition_v1(person_results, court_yt, court_yb)
-                player_condition = get_player_condition_v2(person_results, previous_player_records)
-            elif len(person_results) == 0:
+            # Eliminate frames with other perspectives before or after the game
+            diff = ((np.array(current_frame, dtype=np.float32) - np.array(bg_img, dtype=np.float32)) **2 /1000000).sum()
+            if diff > 2000:
                 csv_file.write(f"{frame_id}" + ','*78 + '\n')
-                continue
             else:
-                print(person_results)
+                # get the detection results of current frame
+                # the resulting box is (x1, y1, x2, y2)
+                mmdet_results = inference_detector(DET_MODEL, current_frame)
+
+                # keep the person class bounding boxes.
+                person_results = process_mmdet_results(mmdet_results, DET_CAT_ID)
+
+                # width_anchor, height_anchor = videoReader.width/2, videoReader.height*(2/3)
+                # person_results = person_results[:5]
+                # person_results = sorted(person_results, key=lambda person: (
+                #     min(abs(person["bbox"][0]-width_anchor), abs(person["bbox"][2]-width_anchor))**2 *0.5 +
+                #     min(abs(person["bbox"][1]-height_anchor), abs(person["bbox"][3]-height_anchor))**2))
+                # person_results = sorted(person_results[:2], key=lambda person: person["bbox"][3])
+
+                person_results = list(filter(lambda person: person["bbox"][4] > 0.8, person_results))
+                person_results = list(filter(
+                    lambda person: (person["bbox"][2]-person["bbox"][0])*(person["bbox"][3]-person["bbox"][1]) > 500, person_results))
+                person_results = list(filter(
+                    lambda person: in_court(person, court_values, condition_values), person_results))
+
                 pose_results, returned_outputs = inference_top_down_pose_model(
                     POSE_MODEL,
                     current_frame,
@@ -169,8 +177,66 @@ def main(video_id):
                     dataset_info=dataset_info,
                     return_heatmap=RETURN_HEATMAP,
                     outputs=OUTPUT_LAYER_NAMES)
-                print(pose_results)
-                vis_frame = vis_pose_result(
+                
+                if len(pose_results) == 0:
+                    player_pose = { 'A': None, 'B': None }
+                elif previous_player_pose['A'] is None or previous_player_pose['B'] is None:
+                    if len(pose_results) == 2:
+                        pose_results = sorted(pose_results, key=lambda person: person["bbox"][3])
+                        player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
+                        previous_player_pose['A'] = player_pose['A']
+                        previous_player_pose['B'] = player_pose['B']
+                    elif len(pose_results) == 1:
+                        player_pose = classify_player_without_previous_records(pose_results, court_values)
+                        pose_results = []
+                        for player_id in [ 'A', 'B' ]:
+                            if player_pose[player_id] is not None:
+                                pose_results.append(player_pose[player_id])
+                                previous_player_pose[player_id] = player_pose[player_id]
+                    else:
+                        if (video_id, frame_id) in [ (195, 0) ]:
+                            pose_results = sorted(pose_results[:2], key=lambda person: person["bbox"][3])
+                            player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
+                            previous_player_pose['A'] = player_pose['A']
+                            previous_player_pose['B'] = player_pose['B']
+                        else:
+                            print(pose_results)
+                            print(f"\n\nError: {video_id:05}, len(pose_results)={len(pose_results)}")
+                            vis_frame = vis_pose_result(
+                                POSE_MODEL,
+                                current_frame,
+                                pose_results,
+                                dataset=dataset,
+                                dataset_info=dataset_info,
+                                kpt_score_thr=KPT_THR,
+                                radius=RADIUS,
+                                thickness=THICKNESS,
+                                show=False)
+                            cv2.imshow(f"{video_id}.mp4: frame {frame_id}", vis_frame)
+                            cv2.waitKey(0)
+                            cv2.destroyAllWindows()
+                            raise Exception
+                else:
+                    player_pose = classify_player(pose_results, previous_player_pose)
+                    pose_results = []
+                    for player_id in [ 'A', 'B' ]:
+                        if player_pose[player_id] is not None:
+                            pose_results.append(player_pose[player_id])
+                            previous_player_pose[player_id] = player_pose[player_id]
+
+                csv_file.write(f"{frame_id}")
+                for player_id in [ 'A', 'B' ]:
+                    if player_pose[player_id] is None:
+                        csv_file.write(','*39)
+                    else:
+                        bbox      = player_pose[player_id]["bbox"]
+                        keypoints = player_pose[player_id]["keypoints"]
+                        csv_file.write(f",{bbox[4]},{bbox[0]},{bbox[2]},{bbox[1]},{bbox[3]}")
+                        for kpt in keypoints: csv_file.write(f",{kpt[0]},{kpt[1]}")
+                csv_file.write('\n')
+
+                # show the results
+                current_frame = vis_pose_result(
                     POSE_MODEL,
                     current_frame,
                     pose_results,
@@ -180,61 +246,15 @@ def main(video_id):
                     radius=RADIUS,
                     thickness=THICKNESS,
                     show=False)
-                cv2.imshow(f"{video_id:05}.mp4: frame {frame_id}", vis_frame)
-                cv2.waitKey(0)
-                person_results = person_results[:2]
-
-            pose_results, returned_outputs = inference_top_down_pose_model(
-                POSE_MODEL,
-                current_frame,
-                person_results,
-                bbox_thr=BBOX_THR,
-                format="xyxy",
-                dataset=dataset,
-                dataset_info=dataset_info,
-                return_heatmap=RETURN_HEATMAP,
-                outputs=OUTPUT_LAYER_NAMES)
-            
-            csv_file.write(f"{frame_id}")
-            if len(person_results) == 2:
-                previous_player_records['A'] = pose_results[0]
-                previous_player_records['B'] = pose_results[1]
-                for pose in pose_results:
-                    bbox, keypoints = pose["bbox"], pose["keypoints"]
-                    csv_file.write(f",{bbox[4]},{bbox[0]},{bbox[2]},{bbox[1]},{bbox[3]}")
-                    for kpt in keypoints: csv_file.write(f",{kpt[0]},{kpt[1]}")
-            else:
-                bbox, keypoints = pose_results[0]["bbox"], pose_results[0]["keypoints"]
-                if player_condition == 'A':
-                    previous_player_records['A'] = pose_results[0]
-                    csv_file.write(f",{bbox[4]},{bbox[0]},{bbox[2]},{bbox[1]},{bbox[3]}")
-                    for kpt in keypoints: csv_file.write(f",{kpt[0]},{kpt[1]}")
-                    csv_file.write(','*39)
-                else:
-                    previous_player_records['B'] = pose_results[0]
-                    csv_file.write(','*39)
-                    csv_file.write(f",{bbox[4]},{bbox[0]},{bbox[2]},{bbox[1]},{bbox[3]}")
-                    for kpt in keypoints: csv_file.write(f",{kpt[0]},{kpt[1]}")
-            csv_file.write('\n')
-
-            # show the results
-            vis_frame = vis_pose_result(
-                POSE_MODEL,
-                current_frame,
-                pose_results,
-                dataset=dataset,
-                dataset_info=dataset_info,
-                kpt_score_thr=KPT_THR,
-                radius=RADIUS,
-                thickness=THICKNESS,
-                show=False)
-            
-            videoWriter.write(vis_frame)
+                
+            videoWriter.write(current_frame)
 
         videoWriter.release()
 
 
 if __name__ == '__main__':
     for video_id in train_formal_list:
-        if video_id < 82: continue
+        if video_id <= 438 or video_id >= 747: continue
         main(video_id)
+    
+    winsound.Beep(300, 1000)
