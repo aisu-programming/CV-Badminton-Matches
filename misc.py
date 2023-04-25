@@ -145,7 +145,7 @@ def combine_ball_and_pose_csv():
         combined_csv.to_csv(f"data/train/{video_id:05}/{video_id:05}_combined.csv")
     return
 
-def convert_ground_truth():
+def convert_ground_truth_v1():
     # from scipy.ndimage import gaussian_filter
     for video_id in tqdm(train_formal_list):
         frame_count = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
@@ -176,13 +176,85 @@ def convert_ground_truth():
         ground_truth.to_csv(f"data/train/{video_id:05}/{video_id:05}_S2_hit.csv")
     return
 
-def split_video_into_images():
+def convert_ground_truth_v2():
     for video_id in tqdm(train_formal_list):
-        import mmcv
+        frame_count = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
+        hit_data    = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter"]].values
+        hit_A = np.zeros(frame_count, dtype=np.float32)
+        hit_B = np.zeros(frame_count, dtype=np.float32)
+        for hf, htr in hit_data:
+            if htr == 'A': hit_A[hf-5:hf+5] = 1.0
+            else:          hit_B[hf-5:hf+5] = 1.0
+        hit = np.minimum(1.0, hit_A+hit_B)
+        ground_truth = pd.DataFrame({
+            "Frame": pd.Series(range(frame_count)),
+            "Hit"  : pd.Series(hit),
+            "Hit A": pd.Series(hit_A),
+            "Hit B": pd.Series(hit_B),
+        })
+        ground_truth = ground_truth.set_index("Frame")
+        ground_truth.to_csv(f"data/train/{video_id:05}/{video_id:05}_S2_hit.csv")
+    return
+
+def split_video_into_images():
+    import mmcv
+    for video_id in tqdm(train_formal_list):
+        if video_id > 1: break
         os.makedirs(f"data/train/{video_id:05}/images", exist_ok=True)
-        video = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
+        video = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")[:]
         for img_id, img in enumerate(video):
             cv2.imwrite(f"data/train/{video_id:05}/images/{img_id:04}.jpg", img)
+    return
+
+def load_images():
+    videos = []
+    for video_id in tqdm(train_formal_list):
+        images = []
+        images_count = len(os.listdir(f"data/train/{video_id:05}/images"))
+        for img_id in range(images_count):
+            img = cv2.imread(f"data/train/{video_id:05}/images/{img_id:04}.jpg")
+            images.append(img)
+            # with open(f"data/train/{video_id:05}/images/{img_id:04}.jpg", mode="rb") as i: 
+            #     img = i.read()
+            #     images.append(img)
+        videos.append(images)
+    return
+
+def create_h5py():
+    import h5py
+    with h5py.File("data/train/images.hdf5", "w") as h5py_file:
+        for video_id in tqdm(train_formal_list):
+            images = []
+            images_count = len(os.listdir(f"data/train/{video_id:05}/images"))
+            for img_id in range(images_count):
+                # img = cv2.imread(f"data/train/{video_id:05}/images/{img_id:04}.jpg")
+                # images.append(img)
+                with open(f"data/train/{video_id:05}/images/{img_id:04}.jpg", 'rb') as img:
+                    images.append(img.read())
+            images = np.asarray(images)
+            h5py_file.create_dataset(f"{video_id:05}", data=images)
+    return
+
+def scale_images():
+    import mmcv
+    for video_id in tqdm(train_formal_list):
+        if video_id < 135: continue
+        os.makedirs(f"data/train/{video_id:05}/images_0.5", exist_ok=True)
+        video = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")[:]
+        for img_id, img in enumerate(video):
+            img = cv2.resize(img, (640, 360), interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite(f"data/train/{video_id:05}/images_0.5/{img_id:04}.jpg", img)
+    return
+
+def crop_images():
+    os.makedirs("data/train_background/cropped", exist_ok=True)
+    for bg_filename in os.listdir("data/train_background"):
+        if ".png" in bg_filename:
+            img = cv2.imread(f"data/train_background/{bg_filename}")
+            img = cv2.copyMakeBorder(img, 140, 140, 0, 0, cv2.BORDER_CONSTANT, value=(0,0,0))
+            img = img[:, 140:-140]
+            img = cv2.resize(img, (500, 500), interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite(f"data/train_background/cropped/{bg_filename}", img)
     return
 
 
@@ -196,6 +268,11 @@ if __name__ == "__main__":
     # check_length_match()
     # patch_ball_csv()
     # combine_ball_and_pose_csv()
-    convert_ground_truth()
+    # convert_ground_truth_v1()
+    convert_ground_truth_v2()
     # split_video_into_images()
+    # load_images()
+    # create_h5py()
+    # scale_images()
+    # crop_images()
     pass

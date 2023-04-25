@@ -1,21 +1,7 @@
 """ Libraries """
 import torch
 import torch.nn as nn
-
-# import json
-# import urllib
-# from pytorchvideo.data.encoded_video import EncodedVideo
-
-# from torchvision.transforms import Compose, Lambda
-# from torchvision.transforms._transforms_video import (
-#     CenterCropVideo,
-#     NormalizeVideo,
-# )
-# from pytorchvideo.transforms import (
-#     ApplyTransformToKey,
-#     ShortSideScale,
-#     UniformTemporalSubsample
-# )
+import torchvision
 
 
 """ Models """
@@ -61,82 +47,73 @@ class MyConv2d(nn.Module):
         return x
 
 
-class VideoProcessor(nn.Module):
-    def __init__(self) -> None:
+class ImageProcessor(nn.Module):
+    def __init__(self, length) -> None:
         super().__init__()
-        self.sequential = nn.Sequential(
-            MyConv2d( 3,  8),        # (BS, 720, 1280,  3) --> (BS, 360, 640,  8)
-            MyConv2d( 8, 16),        # (BS, 360,  640,  8) --> (BS, 180, 320, 16)
-            MyConv2d(16, 24),        # (BS, 180,  320, 16) --> (BS,  90, 160, 24)
-            MyConv2d(24, 24),        # (BS,  90,  160, 24) --> (BS,  45,  80, 24)
-            MyConv2d(24, 32),        # (BS,  45,   80, 24) --> (BS,  22,  40, 32)
-            MyConv2d(32, 32),        # (BS,  23,   40, 32) --> (BS,  12,  20, 32)
-            nn.Flatten(),            # (BS,  12,   20, 32) --> (BS,         7680)
-            MyLinear1D(7680, 4096),  # (BS,          7680) --> (BS,         4096)
-            MyLinear1D(4096, 2048),  # (BS,          4096) --> (BS,         2048)
-            MyLinear1D(2048, 1024),  # (BS,          2048) --> (BS,         1024)
-            MyLinear1D(1024,  512),  # (BS,          1024) --> (BS,          512)
-            MyLinear1D( 512,  256),  # (BS,           512) --> (BS,          256)
-            MyLinear1D( 256,  128),  # (BS,           256) --> (BS,          128)
-        )
+        self.length = length
+        self.resnet       = torchvision.models.resnet50(width_per_group=500, num_classes=length*64)
+        self.resnet.conv1 = nn.Conv2d((length+1)*3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.resnet.bn1   = nn.BatchNorm2d(64)
+        self.multihead_attn = nn.MultiheadAttention(64, 8, dropout=0.1, batch_first=True)
 
     def forward(self, x) -> torch.Tensor:
-        x = self.sequential(x)
+        shape = (-1, self.length, 64)
+        x = self.resnet(x)                   # (BS, (length+1)*3, 500, 500) --> (BS,  length*64)
+        x = torch.reshape(x, shape)          # (BS,              length*64) --> (BS, length, 64)
+        x, _ = self.multihead_attn(x, x, x)
         return x
 
 
 class DataProcessor(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, length) -> None:
         super().__init__()
         self.sequential = nn.Sequential(
-            MyLinear1D( 81, 128),  # (BS,  81) --> (BS, 128)
-            MyLinear1D(128, 256),  # (BS, 128) --> (BS, 256)
-            MyLinear1D(256, 512),  # (BS, 256) --> (BS, 512)
-            MyLinear1D(512, 256),  # (BS, 512) --> (BS, 256)
-            MyLinear1D(256, 128),  # (BS, 256) --> (BS, 128)
+            MyLinear2D( 81, 128, length),  # (BS, length,  81) --> (BS, length, 128)
+            MyLinear2D(128, 256, length),  # (BS, length, 128) --> (BS, length, 256)
+            MyLinear2D(256, 128, length),  # (BS, length, 256) --> (BS, length, 128)
+            MyLinear2D(128,  64, length),  # (BS, length, 128) --> (BS, length,  64)
         )
+        self.multihead_attn = nn.MultiheadAttention(64, 8, dropout=0.1, batch_first=True)
 
-    def forward(self, input) -> torch.Tensor:
-        x = input
+    def forward(self, x) -> torch.Tensor:
         x = self.sequential(x)
+        self.multihead_attn(x, x, x)
         return x
-    
+
 
 class MyProcessor(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, length) -> None:
         super().__init__()
-        self.video_processor = VideoProcessor()
-        self.data_processor  = DataProcessor()
+        self.image_processor = ImageProcessor(length)
+        self.data_processor  = DataProcessor(length)
 
-    def forward(self, video, data) -> torch.Tensor:
-        video  = self.video_processor(video)         # (BS, 720,  1280,   3) --> (BS,   128)
-        data   = self.data_processor(data)           # (BS,              81) --> (BS,   128)
-        output = torch.concat([video, data], dim=1)  # (BS, 128) + (BS, 128) --> (BS,   256)
+    def forward(self, images, datas) -> torch.Tensor:
+        images = self.image_processor(images)          # (BS, length*3, 360, 640) --> (BS, length,  64)
+        datas  = self.data_processor(datas)            # (BS,   length,       81) --> (BS, length,  64)
+        output = torch.concat([images, datas], dim=2)  # (BS,   length,  64)   *2 --> (BS, length, 128)
         return output
 
 
 class MyModel(nn.Module):
     def __init__(self, length) -> None:
         super().__init__()
-        self.length       = length
-        self.my_processor = MyProcessor()
+        self.my_processor = MyProcessor(length)
         self.sequential   = nn.Sequential(
-            MyLinear1D(length*256, length*128),  # (BS, length * 256) --> (BS, length * 128)
-            MyLinear1D(length*128, length* 64),  # (BS, length * 128) --> (BS, length *  64)
-            MyLinear1D(length* 64, length* 32),  # (BS, length *  64) --> (BS, length *  32)
-            MyLinear1D(length* 32, length* 16),  # (BS, length *  32) --> (BS, length *  16)
+            MyLinear2D(128,  64, length),             # (BS, length, 128) --> (BS, length,  64)
+            MyLinear2D( 64,  32, length),             # (BS, length,  64) --> (BS, length,  32)
+            MyLinear2D( 32,  16, length),             # (BS, length,  32) --> (BS, length,  16)
+            MyLinear2D( 16,   8, length),             # (BS, length,  16) --> (BS, length,   8)
+            nn.Flatten(),                             # (BS, length, 8) --> (BS, length*8)
+            nn.Dropout(0.2),
+            MyLinear1D(length*8, 512),                # (BS,  length*8) --> (BS,      512)
+            MyLinear1D(     512, 128),                # (BS,       512) --> (BS,      128)
+            MyLinear1D(     128,  32),                # (BS,       128) --> (BS,       32)
+            MyLinear1D(      32,   8),                # (BS,        32) --> (BS,        8)
+            MyLinear1D(       8,   1, nn.Sigmoid()),  # (BS,         8) --> (BS,        1)
         )
-        self.softmax_linear = MyLinear2D(16, 3, length, nn.Softmax(dim=-1))
 
     def forward(self, images, datas) -> torch.Tensor:
-        images, datas = images.reshape((-1, 3, 720, 1280)), datas.reshape((-1, 81))
-        x = [ self.my_processor(images, datas) ]
-        x = torch.concat(x, dim=1)             # (BS *length,  256)
-        x = x.reshape((-1, self.length, 256))  # (BS, length,  256)
-
-        x = torch.flatten(x, start_dim=1)      # (BS, length,  256) --> (BS, length * 256)
-        x = self.sequential(x)                 # (BS, length * 256) --> (BS, length *  64)
-        x = x.reshape((-1, self.length,  16))  # (BS, length *  16) --> (BS, length,   16)
-        x = self.softmax_linear(x)             # (BS, length,   16) --> (BS, length,    3)
-        x = x.transpose(dim0=1, dim1=2)
+        x = self.my_processor(images, datas)  # (BS,         ...) --> (BS, length, 128)
+        x = self.sequential(x)                # (BS, length, 128) --> (BS,           1)
+        x = torch.squeeze(x)                  # (BS,           1) --> (BS             )
         return x
