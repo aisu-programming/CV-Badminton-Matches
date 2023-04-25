@@ -176,26 +176,6 @@ def convert_ground_truth_v1():
         ground_truth.to_csv(f"data/train/{video_id:05}/{video_id:05}_S2_hit.csv")
     return
 
-def convert_ground_truth_v2():
-    for video_id in tqdm(train_formal_list):
-        frame_count = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
-        hit_data    = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter"]].values
-        hit_A = np.zeros(frame_count, dtype=np.float32)
-        hit_B = np.zeros(frame_count, dtype=np.float32)
-        for hf, htr in hit_data:
-            if htr == 'A': hit_A[hf-5:hf+5] = 1.0
-            else:          hit_B[hf-5:hf+5] = 1.0
-        hit = np.minimum(1.0, hit_A+hit_B)
-        ground_truth = pd.DataFrame({
-            "Frame": pd.Series(range(frame_count)),
-            "Hit"  : pd.Series(hit),
-            "Hit A": pd.Series(hit_A),
-            "Hit B": pd.Series(hit_B),
-        })
-        ground_truth = ground_truth.set_index("Frame")
-        ground_truth.to_csv(f"data/train/{video_id:05}/{video_id:05}_S2_hit.csv")
-    return
-
 def split_video_into_images():
     import mmcv
     for video_id in tqdm(train_formal_list):
@@ -257,6 +237,73 @@ def crop_images():
             cv2.imwrite(f"data/train_background/cropped/{bg_filename}", img)
     return
 
+def analyze_hits():
+    # min_frame_diffs = []
+    # for video_id in tqdm(train_formal_list):
+    #     frame_diffs = []
+    #     hit_frame   = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame"]].values.flatten()
+    #     frame_count = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
+    #     last_frame = 0
+    #     for hid in range(len(hit_frame)+1):
+    #         if hid != len(hit_frame):
+    #             fd = hit_frame[hid] - last_frame
+    #             frame_diffs.append(fd)
+    #             last_frame = hit_frame[hid]
+    #         else:
+    #             fd = frame_count - last_frame
+    #             frame_diffs.append(fd)
+    #     frame_diffs = sorted(frame_diffs)[:3]
+    #     min_frame_diffs.append(frame_diffs)
+    # min_frame_diffs = sorted(min_frame_diffs, key=lambda fds: fds[0])
+    # print(min_frame_diffs[:10])
+    frame_diffs = []
+    for video_id in tqdm(train_formal_list):
+        frame_count = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
+        hit_frame   = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame"]].values.flatten()
+        frame_diffs.append(frame_count-hit_frame[-1])
+    print(sorted(frame_diffs))
+    return
+
+def scale_and_crop_images():
+    os.makedirs("data/train_background/images_0.25", exist_ok=True)
+    for bg_filename in os.listdir("data/train_background"):
+        if ".png" in bg_filename:
+            img = cv2.imread(f"data/train_background/{bg_filename}")
+            img = cv2.resize(img, (320, 180), interpolation=cv2.INTER_CUBIC)
+            img = cv2.copyMakeBorder(img, 35, 35, 0, 0, cv2.BORDER_CONSTANT, value=(0,0,0))
+            img = img[:, 35:-35]
+            cv2.imwrite(f"data/train_background/images_0.25/{bg_filename}", img)
+    # import mmcv
+    # os.makedirs(f"data/train/{video_id:05}/images_0.25", exist_ok=True)
+    # for video_id in tqdm(train_formal_list):
+    #     video = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")[:]
+    #     for img_id, img in enumerate(video):
+    #         img = cv2.resize(img, (320, 180), interpolation=cv2.INTER_CUBIC)
+    #         img = cv2.copyMakeBorder(img, 35, 35, 0, 0, cv2.BORDER_CONSTANT, value=(0,0,0))
+    #         img = img[:, 35:-35]
+    #         cv2.imwrite(f"data/train/{video_id:05}/images_0.25/{img_id:04}.jpg", img)
+    return
+
+def convert_ground_truth_v2():
+    for video_id in tqdm(train_formal_list):
+        frame_count = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
+        hit_data    = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter"]].values
+        hit_A = np.zeros(frame_count, dtype=np.float32)
+        hit_B = np.zeros(frame_count, dtype=np.float32)
+        for hf, htr in hit_data:
+            if htr == 'A': hit_A[max(0, hf-1):hf+1] = 1.0
+            else:          hit_B[max(0, hf-1):hf+1] = 1.0
+        hit = np.minimum(1.0, hit_A+hit_B)
+        ground_truth = pd.DataFrame({
+            "Frame": pd.Series(range(frame_count)),
+            "Hit"  : pd.Series(hit),
+            "Hit A": pd.Series(hit_A),
+            "Hit B": pd.Series(hit_B),
+        })
+        ground_truth = ground_truth.set_index("Frame")
+        ground_truth.to_csv(f"data/train/{video_id:05}/{video_id:05}_S2_hit.csv")
+    return
+
 
 if __name__ == "__main__":
     # get_formal_list()
@@ -269,10 +316,12 @@ if __name__ == "__main__":
     # patch_ball_csv()
     # combine_ball_and_pose_csv()
     # convert_ground_truth_v1()
-    convert_ground_truth_v2()
+    # convert_ground_truth_v2()
     # split_video_into_images()
     # load_images()
     # create_h5py()
     # scale_images()
     # crop_images()
+    # analyze_hits()
+    scale_and_crop_images()
     pass

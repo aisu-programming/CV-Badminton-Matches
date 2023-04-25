@@ -108,7 +108,8 @@ def main(args):
     # shutil.copy("models.py", args.save_dir)
     # shutil.copy("dataloader.py", args.save_dir)
 
-    my_dataset = MyMapDataset(args.length, step=args.step)
+    my_dataset = MyMapDataset()
+    # my_dataset = MyMapDataset(args.length, step=args.step)
     # my_dataset = MyMapDataset(args.length, step=args.length)
 
     # (images_0, datas_0), truths_0 = my_dataset[0]
@@ -139,10 +140,10 @@ def main(args):
         # prefetch_factor=2, persistent_workers=False
     )
 
-    model        = MyModel(args.length).to(args.device)
+    model        = MyModel(7).to(args.device)
     criterion    = torch.nn.MSELoss()
-    optimizer    = torch.optim.Adam(model.parameters(), lr=0.008)
-    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.993)
+    optimizer    = torch.optim.Adam(model.parameters(), lr=0.04)
+    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.994)
 
     for epoch in range(1, args.epochs+1):
         print(f"{epoch}/{args.epochs}")
@@ -160,13 +161,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-e",  "--epochs",      type=int, default=100)
-    parser.add_argument("-bs", "--batch-size",  type=int, default=2)
+    parser.add_argument("-bs", "--batch-size",  type=int, default=12)
     # parser.add_argument("-nw", "--num-workers", type=int, default=6)
-    parser.add_argument("-l",  "--length",      type=int, default=45)
-    parser.add_argument("-s",  "--step",        type=int, default=45)
+    # parser.add_argument("-l",  "--length",      type=int, default=45)
+    # parser.add_argument("-s",  "--step",        type=int, default=45)
     parser.add_argument("-d",  "--device",      type=str, default=DEFAULT_DEVICE)
     parser.add_argument("-sd", "--save-dir",    type=str, default=DEFAULT_SAVE_DIR)
 
     args = parser.parse_args()
-    assert args.length % 2 == 1
+    # assert args.length % 2 == 1
     main(args)
