@@ -23,6 +23,7 @@ from tensorflow.keras.utils import array_to_img, img_to_array  # , load_img
 # from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 # from TrackNetv2 import TrackNet3
+from misc import train_formal_list, valid_formal_list
 
 
 BATCH_SIZE=1
@@ -80,9 +81,9 @@ def custom_time(time):
 	return cts
 
 
-def main(video_id):
+def main(video_id, mode):
 
-	videoName = f"data/train/{video_id:05}/{video_id:05}.mp4"
+	video_name = f"data/{mode}/{video_id:05}/{video_id:05}.mp4"
 	load_weights = "TrackNetv2/mimo/model906_30"
 
 	# Loss function
@@ -94,10 +95,10 @@ def main(video_id):
 	# model.summary()
 	# start = time.time()
 
-	f = open(videoName[:-4]+'_ball_33.csv', 'w')
+	f = open(video_name[:-4]+'_ball_33.csv', 'w')
 	f.write('Frame,Visibility,X,Y,Time\n')
 
-	cap = cv2.VideoCapture(videoName)
+	cap = cv2.VideoCapture(video_name)
 
 	success, image1 = cap.read()
 	frame_time1 = custom_time(cap.get(cv2.CAP_PROP_POS_MSEC))
@@ -111,15 +112,15 @@ def main(video_id):
 	size = (int(WIDTH*ratio), int(HEIGHT*ratio))
 	fps = 30
 
-	if videoName[-3:] == 'avi':
+	if video_name[-3:] == 'avi':
 		fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-	elif videoName[-3:] == 'mp4':
+	elif video_name[-3:] == 'mp4':
 		fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 	else:
 		print('usage: video type can only be .avi or .mp4')
 		exit(1)
 
-	out = cv2.VideoWriter(videoName[:-4]+'_ball_33'+videoName[-4:], fourcc, fps, size)
+	video_writer = cv2.VideoWriter(video_name[:-4]+'_ball_33'+video_name[-4:], fourcc, fps, size)
 
 	count = 0
 	
@@ -174,7 +175,7 @@ def main(video_id):
 
 			if np.amax(h_pred[i]) <= 0:
 				f.write(str(count)+',0,0,0,'+frame_time+'\n')
-				out.write(image)
+				# video_writer.write(image)
 			else:	
 				#h_pred
 				(cnts, _) = cv2.findContours(h_pred[i].copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -192,7 +193,7 @@ def main(video_id):
 				f.write(str(count)+',1,'+str(cx_pred)+','+str(cy_pred)+','+frame_time+'\n')
 				image_cp = np.copy(image)
 				cv2.circle(image_cp, (cx_pred, cy_pred), 5, (0,0,255), -1)
-				out.write(image_cp)
+				# video_writer.write(image_cp)
 			count += 1
 		success, image1 = cap.read()
 		frame_time1 = custom_time(cap.get(cv2.CAP_PROP_POS_MSEC))
@@ -203,11 +204,18 @@ def main(video_id):
 		pbar.update(3)
 
 	f.close()
-	out.release()
+	# video_writer.release()
 	# end = time.time()
 	# print('Prediction time:', end-start, 'secs')
 	return
 
 
 if __name__ == "__main__":
-	main(1)
+
+    MODE = "valid"
+    assert MODE in [ "train", "valid" ]
+
+    if MODE=="train": video_id_list = train_formal_list
+    else            : video_id_list = valid_formal_list
+
+    for video_id in video_id_list: main(video_id, MODE)

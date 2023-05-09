@@ -1,4 +1,11 @@
 data
-output
+outputs
+predictions
+analysis/average_ratios
+analysis/each_videos_trajectories
+logs
+
 *.mp4
 *.pyc
+*.pth
+*.pkl

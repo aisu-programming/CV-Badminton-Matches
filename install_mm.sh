@@ -3,7 +3,8 @@ mim install mmcv-full
 
 git clone https://github.com/open-mmlab/mmpose.git
 cd mmpose
-pip install -e .
+pip install -r requirements.txt
+pip install -v -e .
 cd ..
 
 git clone https://github.com/open-mmlab/mmdetection.git
@@ -22,3 +23,10 @@ cd ..
 # pip install -r requirements/build.txt
 # pip install -v -e .
 # cd ..
+
+pip install mmflow mmengine
+
+git clone https://github.com/open-mmlab/mmaction2.git
+cd mmaction2
+pip install -v -e .
+cd ..

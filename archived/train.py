@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-e",  "--epochs",      type=int, default=100)
-    parser.add_argument("-bs", "--batch-size",  type=int, default=12)
+    parser.add_argument("-bs", "--batch-size",  type=int, default=8)
     # parser.add_argument("-nw", "--num-workers", type=int, default=6)
     # parser.add_argument("-l",  "--length",      type=int, default=45)
     # parser.add_argument("-s",  "--step",        type=int, default=45)

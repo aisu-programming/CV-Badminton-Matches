@@ -4,21 +4,30 @@ import mmcv
 import itertools
 import numpy as np
 from tqdm import tqdm
-from misc import train_formal_list
+from misc import train_formal_list, valid_formal_list
 from mmdet.apis import inference_detector, init_detector
 
 
+
+MODE = "val"
+
+MMDETECTION_CONFIG_FILE = "mmdetection/configs/faster_rcnn/faster_rcnn_r50_caffe_fpn_mstrain_1x_coco-person.py"
+MMDETECTION_CHECKPOINT  = "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_1x_coco-person/faster_rcnn_r50_fpn_1x_coco-person_20201216_175929-d022e227.pth"
+DET_MODEL = init_detector(MMDETECTION_CONFIG_FILE, MMDETECTION_CHECKPOINT, device="cuda:0")
+
+
+
 def average_method(video_id):  # Not good
-    os.makedirs(f"output/background/avg", exist_ok=True)
+    os.makedirs(f"outputs/background/avg", exist_ok=True)
     video = np.uint8(mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4"))
     video = video.transpose(1, 2, 0, 3)
     img   = np.uint8(np.average(video, axis=2))
-    cv2.imwrite(f"output/background/avg/{video_id:05}.png", img)
+    cv2.imwrite(f"outputs/background/avg/{video_id:05}.png", img)
     return
 
 
 def mode_method(video_id):  # Good
-    os.makedirs(f"output/background/mode", exist_ok=True)
+    os.makedirs(f"outputs/background/mode", exist_ok=True)
     video = np.uint8(mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4"))
     img = video[0]
     width, height = img.shape[:2]
@@ -26,26 +35,22 @@ def mode_method(video_id):  # Good
     for w, h in itertools.product(range(width), range(height)):
         uniques, counts = np.unique(video[w, h], axis=0, return_counts=True)
         img[w, h] = uniques[np.argmax(counts)]
-    cv2.imwrite(f"output/background/mode/{video_id:05}.png", img)
+    cv2.imwrite(f"outputs/background/mode/{video_id:05}.png", img)
     return
 
 
-MMDETECTION_CONFIG_FILE = "mmdetection/configs/faster_rcnn/faster_rcnn_r50_caffe_fpn_mstrain_1x_coco-person.py"
-MMDETECTION_CHECKPOINT  = "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_1x_coco-person/faster_rcnn_r50_fpn_1x_coco-person_20201216_175929-d022e227.pth"
-DET_MODEL = init_detector(MMDETECTION_CONFIG_FILE, MMDETECTION_CHECKPOINT, device="cuda:0")
-
-
 def average_method_with_masked_players(video_id):  # Almost perfect
-    os.makedirs(f"output/background/avg_without_players", exist_ok=True)
-    videoReader = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
+    os.makedirs(f"outputs/background/avg_without_players/{MODE}", exist_ok=True)
+    videoReader = mmcv.VideoReader(f"data/{MODE}/{video_id:05}/{video_id:05}.mp4")
     width, height = videoReader.width, videoReader.height
 
-    if   video_id == 678: video = videoReader[36:]
-    elif video_id == 746: video = videoReader[:-17]
-    # elif video_id == 521: pass
-    # elif video_id == 391: pass
-    # elif video_id == 265: pass
-    else                : video = videoReader[:]
+    if MODE=="train":
+        if   video_id==678: video = videoReader[36:]
+        elif video_id==746: video = videoReader[:-17]
+        # elif video_id==521: pass
+        # elif video_id==391: pass
+        # elif video_id==265: pass
+        else              : video = videoReader[:]
 
     for frame_id in tqdm(range(len(video)), desc=f"{video_id:05} - Masking players"):
         mmdet_results = inference_detector(DET_MODEL, video[frame_id])[0]
@@ -62,13 +67,13 @@ def average_method_with_masked_players(video_id):  # Almost perfect
     nonzero = np.logical_not(zero)
     img = np.sum(video, axis=-2)
     img = np.uint8(img/np.expand_dims(np.sum(nonzero, axis=-1)+(1e-9), axis=-1))
-    cv2.imwrite(f"output/background/avg_without_players/{video_id:05}.png", img)
+    cv2.imwrite(f"outputs/background/avg_without_players/{MODE}/{video_id:05}.png", img)
     return
 
 
 def mode_method_with_masked_players(video_id):  # ?
     raise NotImplementedError
-    os.makedirs(f"output/background", exist_ok=True)
+    os.makedirs(f"outputs/background", exist_ok=True)
     videoReader = mmcv.VideoReader(f"data/train/{video_id:05}/{video_id:05}.mp4")
     width, height = videoReader.width, videoReader.height
     video = videoReader[:]
@@ -94,12 +99,17 @@ def mode_method_with_masked_players(video_id):  # ?
         else:
             uniques, counts = np.unique(video[w, h, nonzero], axis=0, return_counts=True)
             img[w, h] = uniques[ np.argmax(counts) ]
-    cv2.imwrite(f"output/background/{video_id:05}.png", img)
+    cv2.imwrite(f"outputs/background/{video_id:05}.png", img)
     return
 
 
 if __name__ == "__main__":
-    for video_id in train_formal_list:
+
+    assert MODE in ["train", "valid"]
+    if MODE=="train": video_id_list = train_formal_list
+    else            : video_id_list = valid_formal_list
+
+    for video_id in video_id_list:
         # average_method(video_id)
         # mode_method(video_id)
         average_method_with_masked_players(video_id)

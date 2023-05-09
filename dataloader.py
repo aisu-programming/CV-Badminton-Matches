@@ -1,5 +1,4 @@
 """ Libraries """
-import os
 import cv2
 import torch
 import torch.utils.data
@@ -7,190 +6,339 @@ import random
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from typing import Any, Iterator, Tuple
-from torch.utils.data import Dataset, IterableDataset, Subset
+from typing import Any, Iterator, Tuple, List
+from torch.utils.data import Dataset, Subset
 
-from misc import train_formal_list
-from data.train_background.classification import img_to_background
+from data.train_background.classification import img_to_background as train_img_to_background
+from data.valid_background.classification import img_to_background as valid_img_to_background
 
 
 
 """ Classes """
-# class MyMapDataset(Dataset):
-#     def __init__(self, length, step=1) -> None:
-#         videos, backgrounds, video_lengths = [], [], []
-#         input_data, ground_truth = [], []
-#         for video_id in tqdm(train_formal_list, desc="Preparing MyMapDataset"):
-
-#             if video_id > 100: break
-
-#             vl   = int(cv2.VideoCapture(f"data/train/{video_id:05}/{video_id:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
-#             data = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_combined.csv")
-#             data = data.drop("Frame", axis=1).values
-#             gt   = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2_hit.csv")
-#             gt   = gt[["Hit"]].values
-#             # gt   = gt.drop("Frame", axis=1).values
-#             assert vl == len(data) == len(gt)
-#             video_lengths.append(vl)
-#             input_data.append(np.float32(data))
-#             ground_truth.append(np.float32(gt))
-#             images = []
-#             for img_id in range(vl):
-#                 with open(f"data/train/{video_id:05}/images_0.5/{img_id:04}.jpg", "rb") as img_file:
-#                     images.append(img_file.read())
-#             videos.append(images)
-
-#         for bg_filename in os.listdir("data/train_background"):
-#             if ".png" in bg_filename:
-#                 bg_img = cv2.imread(f"data/train_background/cropped/{bg_filename}")
-#                 # bg_img = cv2.resize(bg_img, (640, 360), interpolation=cv2.INTER_CUBIC)
-#                 backgrounds.append(bg_img)
-
-#         self.videos       = videos
-#         self.backgrounds  = backgrounds
-#         self.input_data   = input_data
-#         self.ground_truth = ground_truth
-#         self.indexs = []
-#         for video_id, vl in enumerate(video_lengths):
-#             for frame in range(0, vl-length+1, step):
-#                 self.indexs.append((video_id, frame, frame+length, frame+length//2))
-
-#     def __getitem__(self, index: int) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
-
-#         video_id, idx_start, idx_end, idx_mid = self.indexs[index]
-#         datas  = self.input_data[video_id][idx_start:idx_end]
-#         truths = self.ground_truth[video_id][idx_mid]
-
-#         # import time
-#         bg_id  = img_to_background[train_formal_list[video_id]]
-#         images = [ self.backgrounds[bg_id] ]
-#         # timer = time.time()
-#         for img_id in range(idx_start, idx_end):
-#             img = cv2.imdecode(np.frombuffer(self.videos[video_id][img_id], dtype=np.uint8), -1)
-#             img = cv2.copyMakeBorder(img, 70, 70, 0, 0, cv2.BORDER_CONSTANT, value=(0,0,0))
-#             img = img[:, 70:-70]
-#             images.append(img)
-#         # print(time.time()-timer)
-#         images = np.array(images, dtype=np.float32) / 255
-#         images = images.transpose((0, 3, 1, 2))
-#         # images = images.reshape((-1, 360, 640))
-#         images = images.reshape((-1, 500, 500))
-
-#         images = torch.from_numpy(images)
-#         datas  = torch.from_numpy(datas)
-#         truths = torch.from_numpy(truths).squeeze()
-#         return (images, datas), truths
-
-#     def __len__(self) -> int:
-#         return len(self.indexs)
+def draw_kpts(kpts_x, kpts_y, important_kpt):
+    assert important_kpt < len(kpts_x)
+    img = np.zeros((64, 64))
+    for coord_id, (x, y) in enumerate(zip(kpts_x, kpts_y)):
+        if coord_id == important_kpt: continue
+        img = cv2.circle(img, (x, y), radius=0, color=0.3, thickness=-1)
+    ikpt = important_kpt
+    img = cv2.circle(img, (kpts_x[ikpt], kpts_y[ikpt]), radius=0, color=0.9, thickness=-1)
+    return img
     
 
-class MyMapDataset(Dataset):
-    def __init__(self) -> None:
+def draw_limbs(kpts_x, kpts_y):
+    img = np.ones((64, 64)) * 0.5
+    lines = [ (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6),  # nose -> others
+              (5, 7), (7, 9), (6, 8), (8, 10),  # arms
+              (5, 11), (6, 12), (11, 12),  # body
+              (11, 13), (13, 15), (12, 14), (14, 16)  # legs
+            ]
+    for ls, le in lines:
+        color = 0.7 if le % 2 == 0 else 0.3
+        pt1 = (kpts_x[ls], kpts_y[ls])
+        pt2 = (kpts_x[le], kpts_y[le])
+        img = cv2.line(img, pt1, pt2, color=color, thickness=1)
+    for kpt_id, (x, y) in enumerate(zip(kpts_x, kpts_y)):
+        color = 0.9 if kpt_id % 2 == 0 else 0.1
+        img = cv2.circle(img, (x, y), radius=0, color=color, thickness=-1)
+    return img
 
-        clip_length = 7
-        hit_sets, idle_sets = [], []
-        video_images, input_data, ground_truth = [], [], []
-        for video_id, train_formal_video_id in tqdm(enumerate(train_formal_list),
-                                                    desc="Preparing MyMapDataset",
-                                                    total=len(train_formal_list)):
-            if video_id > 100: break
 
-            tfvid = train_formal_video_id
+class HitterDataset(Dataset):
+    def __init__(self, length, video_id_list) -> List[int]:
+        
+        hl = (length-1) // 2  # half_length
+        self.ball_type_count = [ 0 ] * 3
 
-            frame_count = int(cv2.VideoCapture(f"data/train/{tfvid:05}/{tfvid:05}.mp4").get(cv2.CAP_PROP_FRAME_COUNT))
-            hit_frame   = pd.read_csv(f"data/train/{tfvid:05}/{tfvid:05}_S2.csv")[["HitFrame"]].values.flatten()
-            idle_index  = np.array([ True ] * frame_count)
-            for hf in hit_frame:
-                hit_sets.append((int(video_id), int(hf)))
-                idle_index[int(hf-clip_length):int(hf+clip_length)] = False
-            idle_index[-clip_length:] = False
-            idle_frame = np.arange(frame_count)[idle_index]
-            for i_f in idle_frame:
-                idle_sets.append((int(video_id), int(i_f)))
+        input_imgs, input_kpts, input_balls, input_times, input_bg_ids, ground_truths = [], [], [], [], [], []
+        for video_id in tqdm(video_id_list, desc="Preparing HitterDataset"):
 
-            images_dir = f"data/train/{tfvid:05}/images_0.25"
-            data = pd.read_csv(f"data/train/{tfvid:05}/{tfvid:05}_combined.csv")
-            data = data.drop("Frame", axis=1).values
-            gt   = pd.read_csv(f"data/train/{tfvid:05}/{tfvid:05}_S2_hit.csv")
-            # gt   = gt.drop("Frame", axis=1).values
-            gt   = gt[["Hit"]].values
-            assert frame_count == len(data) == len(gt)
-            input_data.append(np.float32(data))
-            ground_truth.append(np.float32(gt))
-            images = []
-            for img_filename in os.listdir(images_dir):
-                with open(f"{images_dir}/{img_filename}", "rb") as img_file:
-                    images.append(img_file.read())
-            video_images.append(images)
+            hit_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter", "BallType"]].values
+            pose_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv").values
+            ball_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv")[["Adjusted X", "Adjusted Y"]].values
+            video_frame_count = len(pose_df_values)
 
-        backgrounds = []
-        for bg_filename in os.listdir("data/train_background"):
-            if ".png" in bg_filename:
-                bg_img = cv2.imread(f"data/train_background/images_0.25/{bg_filename}")
-                # bg_img = cv2.resize(bg_img, (640, 360), interpolation=cv2.INTER_CUBIC)
-                backgrounds.append(bg_img)
+            random_frame_list = list(range(video_frame_count))
+            random.shuffle(random_frame_list)
+            random_frame_list = random_frame_list[:15]
+            for frame in random_frame_list:
+                
+                ball_types = np.zeros((length), dtype=np.uint8)
+                for hf, htr, _ in hit_df_values:
+                    if abs(frame-hf) <= hl+1:
+                        if   htr == 'A': ball_type = 1
+                        elif htr == 'B': ball_type = 2
+                        # hf_start, hf_end = max(0, hl-(frame-hf)-1), min(hl-(frame-hf)+1, length-1)
+                        hf_start, hf_end = max(0, hl-(frame-hf)), min(hl-(frame-hf), length-1)
+                        ball_types[hf_start:hf_end+1] = ball_type
 
-        self.clip_length  = clip_length
-        self.backgrounds  = backgrounds
-        self.videos       = video_images
-        self.input_data   = input_data
-        self.ground_truth = ground_truth
-        self.hit_sets     = hit_sets
-        self.idle_sets    = idle_sets
+                hf_start, hf_end = max(frame-hl, 0), min(frame+hl, video_frame_count-1)
+                A_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, ( 6  ):( 6+34):2] / 640 - 1.0
+                A_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, ( 6+1):( 6+34):2] / 360 - 1.0
+                B_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, (45  ):(45+34):2] / 640 - 1.0
+                B_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, (45+1):(45+34):2] / 360 - 1.0
+                
+                A_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, ( 6  ):( 6+34):2]
+                A_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, ( 6+1):( 6+34):2]
+                B_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, (45  ):(45+34):2]
+                B_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, (45+1):(45+34):2]
+                if np.isnan(A_kpts_scl_xs).all() or np.isnan(A_kpts_scl_ys).all() or \
+                   np.isnan(B_kpts_scl_xs).all() or np.isnan(B_kpts_scl_ys).all(): continue
+                A_kpts_scl_xs = A_kpts_scl_xs - (np.nanmax(A_kpts_scl_xs) + np.nanmin(A_kpts_scl_xs)) / 2
+                A_kpts_scl_ys = A_kpts_scl_ys - (np.nanmax(A_kpts_scl_ys) + np.nanmin(A_kpts_scl_ys)) / 2
+                B_kpts_scl_xs = B_kpts_scl_xs - (np.nanmax(B_kpts_scl_xs) + np.nanmin(B_kpts_scl_xs)) / 2
+                B_kpts_scl_ys = B_kpts_scl_ys - (np.nanmax(B_kpts_scl_ys) + np.nanmin(B_kpts_scl_ys)) / 2
 
-    def __getitem__(self, index) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
+                A_kpts_scl_xs /= max(np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys)))
+                A_kpts_scl_ys /= max(np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys)))
+                B_kpts_scl_xs /= max(np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys)))
+                B_kpts_scl_ys /= max(np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys)))
 
-        if index % 2 == 1:
-            iter_set = self.idle_sets
-            index = random.randrange(0, len(iter_set))
-        else:
-            iter_set = self.hit_sets
-            index = index // 2
+                ball_datas = ball_df_values[hf_start:hf_end+1]
+                ball_datas[:, 0] = ball_datas[:, 0] / 640 - 1.0
+                ball_datas[:, 1] = ball_datas[:, 1] / 360 - 1.0
+                ball_datas = np.nan_to_num(ball_datas, nan=0.0)
 
-        video_id, frame = iter_set[index]
-        datas  = self.input_data[video_id][frame:frame+self.clip_length]
-        truths = self.ground_truth[video_id][frame]
+                if frame-hl < 0:
+                    A_kpts_ori_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_ori_xs], axis=0)
+                    A_kpts_ori_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_ori_ys], axis=0)
+                    B_kpts_ori_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_ori_xs], axis=0)
+                    B_kpts_ori_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_ori_ys], axis=0)
+                    A_kpts_scl_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_scl_xs], axis=0)
+                    A_kpts_scl_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_scl_ys], axis=0)
+                    B_kpts_scl_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_scl_xs], axis=0)
+                    B_kpts_scl_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_scl_ys], axis=0)
+                    ball_datas    = np.concatenate([ np.zeros((abs(frame-hl), 2)),  ball_datas   ], axis=0)
+                if frame+hl > video_frame_count-1:
+                    A_kpts_ori_xs = np.concatenate([ A_kpts_ori_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    A_kpts_ori_ys = np.concatenate([ A_kpts_ori_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_ori_xs = np.concatenate([ B_kpts_ori_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_ori_ys = np.concatenate([ B_kpts_ori_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    A_kpts_scl_xs = np.concatenate([ A_kpts_scl_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    A_kpts_scl_ys = np.concatenate([ A_kpts_scl_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_scl_xs = np.concatenate([ B_kpts_scl_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_scl_ys = np.concatenate([ B_kpts_scl_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    ball_datas    = np.concatenate([ ball_datas,    np.zeros((frame+hl-(video_frame_count-1),  2)) ], axis=0)
+                assert ball_datas.shape == (length, 2)
 
-        bg_id  = img_to_background[train_formal_list[video_id]]
-        images = [ self.backgrounds[bg_id] ]
-        for img_frame in range(frame, frame+self.clip_length):
-            img = cv2.imdecode(np.frombuffer(self.videos[video_id][img_frame], dtype=np.uint8), -1)
-            # cv2.imshow("", img)
-            # cv2.waitKey(0)
-            # cv2.destroyAllWindows()
-            images.append(img)
-        images = np.array(images, dtype=np.float32) / 255
-        images = images.transpose((0, 3, 1, 2))
-        images = images.reshape((-1, 250, 250))
+                kpt_imgs = np.zeros((2, length, 64, 64))
+                for fid, _f in enumerate(range(frame-hl, frame+hl+1)):
+                    if _f <                  0: continue
+                    if _f >= video_frame_count: continue
+                    if pose_df_values[_f, 1] > 0.5:
+                        kpts_x = A_kpts_scl_xs[fid]
+                        kpts_y = A_kpts_scl_ys[fid]
+                        kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpt_imgs[0, fid] = draw_limbs(kpts_x, kpts_y)
+                        # cv2.imshow(f"{video_id:05}_{hit_id}_A", cv2.resize(kpt_imgs[0, fid], (512, 512)))
+                        # cv2.waitKey(2)
+                        # cv2.destroyAllWindows()
+                        # for kpt_id in range(17): kpt_imgs[kpt_id+1, fid] = draw_kpts(kpts_x, kpts_y, kpt_id)
+                    if pose_df_values[_f, 40] > 0.5:
+                        kpts_x = B_kpts_scl_xs[fid]
+                        kpts_y = B_kpts_scl_ys[fid]
+                        kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpt_imgs[1, fid] = draw_limbs(kpts_x, kpts_y)
+                        # cv2.imshow(f"{video_id:05}_{hit_id}_B", cv2.resize(kpt_imgs[1, fid], (512, 512)))
+                        # cv2.waitKey(2)
+                        # cv2.destroyAllWindows()
+                        # for kpt_id in range(17): kpt_imgs[kpt_id+18+1, fid] = draw_kpts(kpts_x, kpts_y, kpt_id)
 
-        images = torch.from_numpy(images)
-        datas  = torch.from_numpy(datas)
-        truths = torch.from_numpy(truths).squeeze()
-        return (images, datas), truths
+                kpt_datas = np.concatenate([  # (4, length, 17)
+                    np.expand_dims(np.nan_to_num(A_kpts_ori_xs, nan=0.0), axis=1),
+                    np.expand_dims(np.nan_to_num(A_kpts_ori_ys, nan=0.0), axis=1),
+                    np.expand_dims(np.nan_to_num(B_kpts_ori_xs, nan=0.0), axis=1),
+                    np.expand_dims(np.nan_to_num(B_kpts_ori_ys, nan=0.0), axis=1),
+                ], axis=1)
+                assert kpt_datas.shape == (length, 4, 17)
+
+                time_datas = np.arange(frame-hl, frame+hl+1) / video_frame_count
+                assert time_datas.shape == (length, )
+
+                bg_id = np.zeros(12)
+                # if args.mode=="train": bg_id[train_img_to_background[video_id]] = 1
+                # else                 : bg_id[valid_img_to_background[video_id]] = 1
+
+                input_imgs.append(kpt_imgs)
+                input_kpts.append(kpt_datas)
+                input_balls.append(ball_datas)
+                input_times.append(time_datas)
+                input_bg_ids.append(bg_id)
+                ground_truths.append(ball_types)
+                for bt in ball_types: self.ball_type_count[bt] += 1
+
+                # cv2.waitKey(0)
+                # cv2.destroyAllWindows()
+
+        self.input_imgs    = torch.from_numpy(np.array(input_imgs, dtype=np.float32))
+        del input_imgs
+        self.input_kpts    = torch.from_numpy(np.array(input_kpts, dtype=np.float32))
+        del input_kpts
+        self.input_balls   = torch.from_numpy(np.array(input_balls, dtype=np.float32))
+        del input_balls
+        self.input_times   = torch.from_numpy(np.array(input_times, dtype=np.float32))
+        del input_times
+        self.input_bg_ids  = torch.from_numpy(np.array(input_bg_ids, dtype=np.float32))
+        del input_bg_ids
+        self.ground_truths = torch.from_numpy(np.array(ground_truths, dtype=np.uint8)).long()
+        del ground_truths
+
+    def __getitem__(self, index) -> Tuple[torch.Tensor, torch.Tensor]:
+        return ((
+                self.input_imgs[index],    # ( 2, length, 64, 64)
+                self.input_kpts[index],    # ( 4, length,     17)
+                self.input_balls[index],   # (    length,      2)
+                self.input_times[index],   # (    length        )
+                self.input_bg_ids[index],  # (                12)
+            ),
+            self.ground_truths[index]    # (                 1)
+        )
 
     def __len__(self) -> int:
-        return int(len(self.hit_sets) *2)
+        return int(len(self.ground_truths))
+    
 
+class RoundHeadColumnsDataset(Dataset):
+    def __init__(self, length, video_id_list) -> List[int]:
+        
+        hl = (length-1) // 2  # half_length
+        self.round_head_count = [ 0 ] * 2
 
-# class MyIterableDataset(IterableDataset):
-#     def __init__(self, start: int, end: int) -> None:
-#         super(MyIterableDataset).__init__()
-#         assert end > start, "this example code only works with end >= start"
-#         self.start = start
-#         self.end = end
-#
-#     def __iter__(self) -> Iterator[int]:
-#         worker_info = torch.utils.data.get_worker_info()
-#         if worker_info is None:
-#             iter_start = self.start
-#             iter_end = self.end
-#         else:
-#             per_worker = int(math.ceil((self.end - self.start) / float(worker_info.num_workers)))
-#             worker_id = worker_info.id
-#             iter_start = self.start + worker_id * per_worker
-#             iter_end = min(iter_start + per_worker, self.end)
-#         return iter(range(iter_start, iter_end))
+        input_imgs, input_kpts, input_balls, input_times, input_hitters, input_bg_ids, ground_truths = [], [], [], [], [], [], []
+        for video_id in tqdm(video_id_list, desc="Preparing RoundHeadColumnsDataset"):
+
+            hit_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter", "RoundHead"]].values
+            pose_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv").values
+            ball_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv")[["Adjusted X", "Adjusted Y"]].values
+            video_frame_count = len(pose_df_values)
+
+            for hit_frame, hitter, round_head in hit_df_values:
+                
+                hf_start, hf_end = max(hit_frame-hl, 0), min(hit_frame+hl, video_frame_count-1)
+                A_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, ( 6  ):( 6+34):2] / 640 - 1.0
+                A_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, ( 6+1):( 6+34):2] / 360 - 1.0
+                B_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, (45  ):(45+34):2] / 640 - 1.0
+                B_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, (45+1):(45+34):2] / 360 - 1.0
+                
+                A_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, ( 6  ):( 6+34):2]
+                A_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, ( 6+1):( 6+34):2]
+                B_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, (45  ):(45+34):2]
+                B_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, (45+1):(45+34):2]
+                if np.isnan(A_kpts_scl_xs).all() or np.isnan(A_kpts_scl_ys).all() or \
+                   np.isnan(B_kpts_scl_xs).all() or np.isnan(B_kpts_scl_ys).all(): continue
+                A_kpts_scl_xs = A_kpts_scl_xs - (np.nanmax(A_kpts_scl_xs) + np.nanmin(A_kpts_scl_xs)) / 2
+                A_kpts_scl_ys = A_kpts_scl_ys - (np.nanmax(A_kpts_scl_ys) + np.nanmin(A_kpts_scl_ys)) / 2
+                B_kpts_scl_xs = B_kpts_scl_xs - (np.nanmax(B_kpts_scl_xs) + np.nanmin(B_kpts_scl_xs)) / 2
+                B_kpts_scl_ys = B_kpts_scl_ys - (np.nanmax(B_kpts_scl_ys) + np.nanmin(B_kpts_scl_ys)) / 2
+
+                A_kpts_scl_xs /= max(np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys)))
+                A_kpts_scl_ys /= max(np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys)))
+                B_kpts_scl_xs /= max(np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys)))
+                B_kpts_scl_ys /= max(np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys)))
+
+                ball_datas = ball_df_values[hf_start:hf_end+1]
+                ball_datas[:, 0] = ball_datas[:, 0] / 640 - 1.0
+                ball_datas[:, 1] = ball_datas[:, 1] / 360 - 1.0
+                ball_datas = np.nan_to_num(ball_datas, nan=0.0)
+
+                if hit_frame-hl < 0:
+                    A_kpts_ori_xs = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), A_kpts_ori_xs], axis=0)
+                    A_kpts_ori_ys = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), A_kpts_ori_ys], axis=0)
+                    B_kpts_ori_xs = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), B_kpts_ori_xs], axis=0)
+                    B_kpts_ori_ys = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), B_kpts_ori_ys], axis=0)
+                    A_kpts_scl_xs = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), A_kpts_scl_xs], axis=0)
+                    A_kpts_scl_ys = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), A_kpts_scl_ys], axis=0)
+                    B_kpts_scl_xs = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), B_kpts_scl_xs], axis=0)
+                    B_kpts_scl_ys = np.concatenate([ np.zeros((abs(hit_frame-hl), 17)), B_kpts_scl_ys], axis=0)
+                    ball_datas    = np.concatenate([ np.zeros((abs(hit_frame-hl), 2)),  ball_datas   ], axis=0)
+                if hit_frame+hl > video_frame_count-1:
+                    A_kpts_ori_xs = np.concatenate([ A_kpts_ori_xs, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    A_kpts_ori_ys = np.concatenate([ A_kpts_ori_ys, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_ori_xs = np.concatenate([ B_kpts_ori_xs, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_ori_ys = np.concatenate([ B_kpts_ori_ys, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    A_kpts_scl_xs = np.concatenate([ A_kpts_scl_xs, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    A_kpts_scl_ys = np.concatenate([ A_kpts_scl_ys, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_scl_xs = np.concatenate([ B_kpts_scl_xs, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    B_kpts_scl_ys = np.concatenate([ B_kpts_scl_ys, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
+                    ball_datas    = np.concatenate([ ball_datas,    np.zeros((hit_frame+hl-(video_frame_count-1),  2)) ], axis=0)
+                assert ball_datas.shape == (length, 2)
+
+                kpt_imgs = np.zeros((2, length, 64, 64))
+                for fid, _f in enumerate(range(hit_frame-hl, hit_frame+hl+1)):
+                    if _f <                  0: continue
+                    if _f >= video_frame_count: continue
+                    if pose_df_values[_f, 1] > 0.5:
+                        kpts_x = A_kpts_scl_xs[fid]
+                        kpts_y = A_kpts_scl_ys[fid]
+                        kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpt_imgs[0, fid] = draw_limbs(kpts_x, kpts_y)
+                    if pose_df_values[_f, 40] > 0.5:
+                        kpts_x = B_kpts_scl_xs[fid]
+                        kpts_y = B_kpts_scl_ys[fid]
+                        kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
+                        kpt_imgs[1, fid] = draw_limbs(kpts_x, kpts_y)
+
+                kpt_datas = np.concatenate([
+                    np.expand_dims(np.nan_to_num(A_kpts_ori_xs, nan=0.0), axis=1),
+                    np.expand_dims(np.nan_to_num(A_kpts_ori_ys, nan=0.0), axis=1),
+                    np.expand_dims(np.nan_to_num(B_kpts_ori_xs, nan=0.0), axis=1),
+                    np.expand_dims(np.nan_to_num(B_kpts_ori_ys, nan=0.0), axis=1),
+                ], axis=1)
+                assert kpt_datas.shape == (length, 4, 17)
+
+                time_datas = np.arange(hit_frame-hl, hit_frame+hl+1) / video_frame_count
+                assert time_datas.shape == (length, )
+
+                bg_id = np.zeros(12)
+                # if args.mode=="train": bg_id[train_img_to_background[video_id]] = 1
+                # else                 : bg_id[valid_img_to_background[video_id]] = 1
+
+                hitter = [ 1, 0 ] if hitter=='A' else [ 0, 1 ]
+
+                round_head -= 1
+
+                input_imgs.append(kpt_imgs)
+                input_kpts.append(kpt_datas)
+                input_balls.append(ball_datas)
+                input_times.append(time_datas)
+                input_hitters.append(hitter)
+                input_bg_ids.append(bg_id)
+                ground_truths.append(round_head)
+                self.round_head_count[round_head] += 1
+
+        self.input_imgs    = torch.from_numpy(np.array(input_imgs, dtype=np.float32))
+        del input_imgs
+        self.input_kpts    = torch.from_numpy(np.array(input_kpts, dtype=np.float32))
+        del input_kpts
+        self.input_balls   = torch.from_numpy(np.array(input_balls, dtype=np.float32))
+        del input_balls
+        self.input_times   = torch.from_numpy(np.array(input_times, dtype=np.float32))
+        del input_times
+        self.input_bg_ids = torch.from_numpy(np.array(input_bg_ids, dtype=np.float32))
+        del input_bg_ids
+        self.input_hitters = torch.from_numpy(np.array(input_hitters, dtype=np.float32))
+        del input_hitters
+        self.ground_truths = torch.from_numpy(np.array(ground_truths, dtype=np.uint8)).long()
+        del ground_truths
+
+    def __getitem__(self, index) -> Tuple[torch.Tensor, torch.Tensor]:
+        return ((
+                self.input_imgs[index],     # ( 2, length, 64, 64)
+                self.input_kpts[index],     # ( 4, length,     17)
+                self.input_balls[index],    # (    length,      2)
+                self.input_times[index],    # (    length        )
+                self.input_bg_ids[index],   # (                12)
+                self.input_hitters[index],  # (                 2)
+            ),
+            self.ground_truths[index]    # (                 1)
+        )
+
+    def __len__(self) -> int:
+        return int(len(self.ground_truths))
 
 
 
