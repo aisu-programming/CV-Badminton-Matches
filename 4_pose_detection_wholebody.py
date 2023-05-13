@@ -5,23 +5,22 @@ import winsound
 import numpy as np
 from tqdm import tqdm
 
-from misc import train_formal_list, valid_formal_list
-from pose_keypoints import pose_keypoints
-from data.train_background.classification import img_to_background  as train_img_to_background
-from data.train_background.classification import background_details as train_background_details
-from data.valid_background.classification import img_to_background  as valid_img_to_background
-from data.valid_background.classification import background_details as valid_background_details
-
 from mmdet.apis import inference_detector, init_detector
 from mmpose.apis import inference_top_down_pose_model, init_pose_model, process_mmdet_results, vis_pose_result
 from mmpose.datasets import DatasetInfo
 
+from pose_wholebody_keypoints import pose_wholebody_keypoints
+from data.background.classification import train_img_to_background, valid_img_to_background, test_img_to_background, background_details
+
+
+
+MODE = "test"
 
 
 MMDETECTION_CONFIG_FILE = "mmdetection/configs/faster_rcnn/faster_rcnn_r50_caffe_fpn_mstrain_1x_coco-person.py"
 MMDETECTION_CHECKPOINT  = "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_1x_coco-person/faster_rcnn_r50_fpn_1x_coco-person_20201216_175929-d022e227.pth"
-MMPOSE_CONFIG_FILE = "mmpose/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/coco/hrnet_w48_coco_384x288_dark.py"
-MMPOSE_CHECKPOINT  = "https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth"
+MMPOSE_CONFIG_FILE = "mmpose/configs/wholebody/2d_kpt_sview_rgb_img/topdown_heatmap/coco-wholebody/hrnet_w48_coco_wholebody_384x288_dark_plus.py"
+MMPOSE_CHECKPOINT  = "https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w48_coco_wholebody_384x288_dark-f5726563_20200918.pth"
 
 DEVICE     = "cuda:0"
 DET_CAT_ID = 1
@@ -55,14 +54,13 @@ def classify_player(pose_results, previous_player_pose):
         person_B_diff.append(B_diff)
 
     # Debug
-    if (np.min(person_A_diff) != np.Infinity and np.min(person_A_diff) > 8000) or \
-       (np.min(person_B_diff) != np.Infinity and np.min(person_B_diff) > 8000):
-        # winsound.Beep(300, 1000)
+    if (not np.isinf(min(person_A_diff)) and min(person_A_diff) > 8000) or \
+       (not np.isinf(min(person_B_diff)) and min(person_B_diff) > 8000):
         print(person_A_diff, person_B_diff)
 
-    if np.min(person_A_diff) != np.Infinity:
+    if not np.isinf(min(person_A_diff)):
         player_pose['A'] = pose_results[np.argmin(person_A_diff)]
-    if np.min(person_B_diff) != np.Infinity:
+    if not np.isinf(min(person_B_diff)):
         player_pose['B'] = pose_results[np.argmin(person_B_diff)]
     return player_pose
 
@@ -92,7 +90,7 @@ def in_court(person, court_values, condition_values):
     return False
 
 
-def main(video_id, mode):
+def main(video_id, mode, output_video=False):
 
     dataset = POSE_MODEL.cfg.data["test"]["type"]
     dataset_info = POSE_MODEL.cfg.data["test"].get("dataset_info", None)
@@ -103,16 +101,17 @@ def main(video_id, mode):
         dataset_info = DatasetInfo(dataset_info)
 
     video_input_path  = f"data/{mode}/{video_id:05}/{video_id:05}.mp4"
-    video_output_path = f"data/{mode}/{video_id:05}/{video_id:05}_pose.mp4"
-    csv_output_path = f"data/{mode}/{video_id:05}/{video_id:05}_pose.csv"
-    videoReader = mmcv.VideoReader(video_input_path)
-    assert videoReader.opened, f"Faild to load video file {video_input_path}"
+    video_output_path = f"data/{mode}/{video_id:05}/{video_id:05}_pose_wholebody.mp4"
+    csv_output_path = f"data/{mode}/{video_id:05}/{video_id:05}_pose_wholebody.csv"
+    video_reader = mmcv.VideoReader(video_input_path)
+    assert video_reader.opened, f"Faild to load video file {video_input_path}"
 
-    fps = videoReader.fps
-    size = (videoReader.width, videoReader.height)
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    videoWriter = cv2.VideoWriter(video_output_path, fourcc, fps, size)
-    video = videoReader[:]
+    if output_video:
+        fps = video_reader.fps
+        size = (video_reader.width, video_reader.height)
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        video_writer = cv2.VideoWriter(video_output_path, fourcc, fps, size)
+    video = video_reader[:]
 
     # Get 2 players' location
     with open(csv_output_path, mode='w') as csv_file:
@@ -120,18 +119,21 @@ def main(video_id, mode):
         csv_file.write("Frame")
         for player in [ "Player A", "Player B" ]:
             csv_file.write(f",{player} confidence,{player} X left,{player} X right,{player} Y top,{player} Y bottom")
-            for kpt in pose_keypoints: csv_file.write(f",{player} {kpt} X,{player} {kpt} Y")
+            for kpt in pose_wholebody_keypoints: csv_file.write(f",{player} {kpt} X,{player} {kpt} Y")
         csv_file.write('\n')
 
         # Values for checking in-court or not
-        if mode=="train":
+        if   mode=="train":
             bg_id  = background_id = train_img_to_background[video_id]
-            bgd    = train_background_details[bg_id]
-        else:
+            bgd    = background_details[bg_id]
+        elif mode=="valid":
             bg_id  = background_id = valid_img_to_background[video_id]
-            bgd    = valid_background_details[bg_id]
+            bgd    = background_details[bg_id]
+        elif mode=="test":
+            bg_id  = background_id = test_img_to_background[video_id]
+            bgd    = background_details[bg_id]
 
-        bg_img = cv2.imread(f"data/{mode}_background/{bg_id:05}.png")
+        bg_img = cv2.imread(f"data/background/{bg_id:05}.png")
         court_yt, court_yb = bgd["y_top"], bgd["y_bottom"]
         court_ym = (court_yt+court_yb) / 2
         court_xlt, court_xlb = bgd["x_left_top"],  bgd["x_left_bottom"]
@@ -147,34 +149,24 @@ def main(video_id, mode):
         condition_values = (left_ratio, left_constant, right_ratio, right_constant)
 
         previous_player_pose = { 'A': None, 'B': None }
-        for frame_id, current_frame in tqdm(enumerate(video), desc=f"[{video_id:05}] Detecting pose", total=len(video)):
+        for frame_id, current_frame in tqdm(enumerate(video), desc=f"[{mode}] {video_id:05}.mp4: Detecting wholebody pose", total=len(video)):
 
             # Eliminate frames with other perspectives before or after the game
             diff = ((np.array(current_frame, dtype=np.float32) - np.array(bg_img, dtype=np.float32)) **2 /1000000).sum()
             if diff > 2000:
-                csv_file.write(f"{frame_id}" + ','*78 + '\n')
+                csv_file.write(f"{frame_id}" + ','*542 + '\n')
             else:
                 # get the detection results of current frame
                 # the resulting box is (x1, y1, x2, y2)
                 mmdet_results = inference_detector(DET_MODEL, current_frame)
-
                 # keep the person class bounding boxes.
                 person_results = process_mmdet_results(mmdet_results, DET_CAT_ID)
-
-                # width_anchor, height_anchor = videoReader.width/2, videoReader.height*(2/3)
-                # person_results = person_results[:5]
-                # person_results = sorted(person_results, key=lambda person: (
-                #     min(abs(person["bbox"][0]-width_anchor), abs(person["bbox"][2]-width_anchor))**2 *0.5 +
-                #     min(abs(person["bbox"][1]-height_anchor), abs(person["bbox"][3]-height_anchor))**2))
-                # person_results = sorted(person_results[:2], key=lambda person: person["bbox"][3])
-
-                person_results = list(filter(lambda person: person["bbox"][4] > 0.8, person_results))
                 person_results = list(filter(
                     lambda person: (person["bbox"][2]-person["bbox"][0])*(person["bbox"][3]-person["bbox"][1]) > 500, person_results))
                 person_results = list(filter(
                     lambda person: in_court(person, court_values, condition_values), person_results))
 
-                pose_results, returned_outputs = inference_top_down_pose_model(
+                pose_results, _ = inference_top_down_pose_model(
                     POSE_MODEL,
                     current_frame,
                     person_results,
@@ -201,8 +193,18 @@ def main(video_id, mode):
                                 pose_results.append(player_pose[player_id])
                                 previous_player_pose[player_id] = player_pose[player_id]
                     else:
-                        if (mode, video_id, frame_id) in [ ("train", 195, 0) ]:
-                            pose_results = sorted(pose_results[:2], key=lambda person: person["bbox"][3])
+                        # if mode == "train" and video_id == 195 and frame_id == 0:
+                        #     pose_results = sorted(pose_results[:2], key=lambda person: person["bbox"][3])  # sort by bottom Y
+                        #     player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
+                        #     previous_player_pose['A'] = player_pose['A']
+                        #     previous_player_pose['B'] = player_pose['B']
+                        # elif mode == "valid" and video_id == 92 and frame_id == 0:
+                        #     pose_results = sorted(pose_results, key=lambda person: person["bbox"][3])[:2]  # sort by bottom Y
+                        #     player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
+                        #     previous_player_pose['A'] = player_pose['A']
+                        #     previous_player_pose['B'] = player_pose['B']
+                        if mode == "test" and video_id == 304 and frame_id == 0:
+                            pose_results = sorted(pose_results[:2], key=lambda person: person["bbox"][3])  # sort by bottom Y
                             player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
                             previous_player_pose['A'] = player_pose['A']
                             previous_player_pose['B'] = player_pose['B']
@@ -219,6 +221,7 @@ def main(video_id, mode):
                                 radius=RADIUS,
                                 thickness=THICKNESS,
                                 show=False)
+                            winsound.Beep(300, 1000)
                             cv2.imshow(f"{video_id}.mp4: frame {frame_id}", vis_frame)
                             cv2.waitKey(0)
                             cv2.destroyAllWindows()
@@ -234,7 +237,7 @@ def main(video_id, mode):
                 csv_file.write(f"{frame_id}")
                 for player_id in [ 'A', 'B' ]:
                     if player_pose[player_id] is None:
-                        csv_file.write(','*39)
+                        csv_file.write(','*271)
                     else:
                         bbox      = player_pose[player_id]["bbox"]
                         keypoints = player_pose[player_id]["keypoints"]
@@ -254,21 +257,22 @@ def main(video_id, mode):
                     thickness=THICKNESS,
                     show=False)
                 
-            # videoWriter.write(current_frame)
+            if output_video: video_writer.write(current_frame)
 
-        videoWriter.release()
+        if output_video: video_writer.release()
 
 
 if __name__ == '__main__':
 
-    MODE = "valid"
-    assert MODE in [ "train", "valid" ]
-
-    if MODE=="train": video_id_list = train_formal_list
-    else            : video_id_list = valid_formal_list
+    assert MODE in [ "train", "valid", "test" ]
+    if   MODE == "train": video_id_list = list(range(1, 400+1))
+    # if   MODE == "train": video_id_list = list(range(400+1, 800+1))
+    elif MODE == "valid": video_id_list = list(range(1, 169+1))
+    else                : video_id_list = list(range(170, 399+1))
 
     for video_id in video_id_list:
-        if video_id < 107: continue
-        main(video_id, MODE)
+        # if video_id < 304: continue
+        main(video_id, MODE, output_video=True)
     
-    # winsound.Beep(300, 1000)
+    winsound.Beep(300, 1000)
+    pass

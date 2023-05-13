@@ -1,12 +1,16 @@
 import cv2
 import mmcv
+import winsound
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter
 
-from misc import train_formal_list, valid_formal_list
 from ball_detection_33 import main as detect_ball
+
+
+
+MODE = "test"
 
 
 def remove_noise(ball_df:pd.DataFrame):
@@ -145,15 +149,16 @@ def output_video(video_id, mode):
 
 if __name__ == "__main__":
 
-    MODE = "valid"
-    assert MODE in [ "train", "valid" ]
-
-    if MODE=="train": video_id_list = train_formal_list
-    else            : video_id_list = valid_formal_list
+    assert MODE in ["train", "valid", "test"]
+    if   MODE=="train": video_id_list = list(range(1, 800+1))
+    elif MODE=="valid": video_id_list = list(range(1, 169+1))
+    else              : video_id_list = list(range(170, 399+1))
 
     for video_id in tqdm(video_id_list):
         detect_ball(video_id, MODE)
         postprocess(video_id, MODE)
         patch_ball_csv(video_id, MODE)
         # output_video(video_id, MODE)
+
+    winsound.Beep(300, 1000)
     pass

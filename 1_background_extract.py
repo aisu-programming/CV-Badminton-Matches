@@ -1,19 +1,19 @@
 import os
 import cv2
 import mmcv
+import winsound
 import itertools
 import numpy as np
 from tqdm import tqdm
-from misc import train_formal_list, valid_formal_list
 from mmdet.apis import inference_detector, init_detector
 
 
 
-MODE = "val"
+MODE = "test"
 
 MMDETECTION_CONFIG_FILE = "mmdetection/configs/faster_rcnn/faster_rcnn_r50_caffe_fpn_mstrain_1x_coco-person.py"
 MMDETECTION_CHECKPOINT  = "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_1x_coco-person/faster_rcnn_r50_fpn_1x_coco-person_20201216_175929-d022e227.pth"
-DET_MODEL = init_detector(MMDETECTION_CONFIG_FILE, MMDETECTION_CHECKPOINT, device="cuda:0")
+DET_MODEL = init_detector(MMDETECTION_CONFIG_FILE, MMDETECTION_CHECKPOINT, device="cuda:1")
 
 
 
@@ -43,21 +43,18 @@ def average_method_with_masked_players(video_id):  # Almost perfect
     os.makedirs(f"outputs/background/avg_without_players/{MODE}", exist_ok=True)
     videoReader = mmcv.VideoReader(f"data/{MODE}/{video_id:05}/{video_id:05}.mp4")
     width, height = videoReader.width, videoReader.height
+    video = videoReader[:]
 
     if MODE=="train":
-        if   video_id==678: video = videoReader[36:]
-        elif video_id==746: video = videoReader[:-17]
-        # elif video_id==521: pass
-        # elif video_id==391: pass
-        # elif video_id==265: pass
-        else              : video = videoReader[:]
+        if   video_id==678: video = video[36:]
+        elif video_id==746: video = video[:-17]
 
-    for frame_id in tqdm(range(len(video)), desc=f"{video_id:05} - Masking players"):
+    for frame_id in tqdm(range(len(video)), desc=f"[{MODE}] {video_id:05}.mp4: Extracting background"):
         mmdet_results = inference_detector(DET_MODEL, video[frame_id])[0]
         mmdet_results = sorted(mmdet_results,
                             key=lambda bbox:
-                                    min(abs(width/2-bbox[0]), abs(width/2-bbox[2]))**2 *0.5 +
-                                    min(abs(height*(2/3)-bbox[1]), abs(height*(2/3)-bbox[3]))**2 )
+                                min(abs(width/2-bbox[0]), abs(width/2-bbox[2]))**2 *0.5 +
+                                min(abs(height*(2/3)-bbox[1]), abs(height*(2/3)-bbox[3]))**2 )
         mmdet_results = mmdet_results[:2]
         for bbox in mmdet_results:
             video[frame_id][int(bbox[1])-10:int(bbox[3])+10, int(bbox[0])-10:int(bbox[2])+10] = [ 0, 0, 0 ]
@@ -105,13 +102,17 @@ def mode_method_with_masked_players(video_id):  # ?
 
 if __name__ == "__main__":
 
-    assert MODE in ["train", "valid"]
-    if MODE=="train": video_id_list = train_formal_list
-    else            : video_id_list = valid_formal_list
+    assert MODE in ["train", "valid", "test"]
+    if   MODE=="train": video_id_list = list(range(1, 800+1))
+    elif MODE=="valid": video_id_list = list(range(1, 169+1))
+    else              : video_id_list = list(range(170, 399+1))
 
-    for video_id in video_id_list:
+    for video_id in tqdm(video_id_list):
+        # if video_id < 229: continue
         # average_method(video_id)
         # mode_method(video_id)
         average_method_with_masked_players(video_id)
         # mode_method_with_masked_players(video_id)
+    
+    winsound.Beep(300, 1000)
     pass

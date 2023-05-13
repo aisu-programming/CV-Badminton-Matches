@@ -1,12 +1,12 @@
-import os
+# import os
 import torch
 import argparse
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from tqdm import tqdm
-from scipy.signal import find_peaks
-from scipy.ndimage import gaussian_filter1d
+# from scipy.signal import find_peaks
+# from scipy.ndimage import gaussian_filter1d
 
 from dataloader import draw_limbs  # , draw_kpts
 from misc import train_formal_list, valid_formal_list
@@ -28,15 +28,15 @@ def main(args):
 
         # if video_id > 50: continue
 
-        answer_df_values  = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_prediction_1_hitter.csv")[["HitFrame", "Hitter"]].values
+        answer_df_values  = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_prediction_2_round_head.csv")[["HitFrame", "Hitter", "RoundHead"]].values
         ball_df_values    = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_ball_33_adj.csv")[["Adjusted X", "Adjusted Y"]].values
         pose_df_values    = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_pose.csv").values
         video_frame_count = len(pose_df_values)
-        length, hl = 25, 12
+        hl = (args.length-1) // 2
 
         predictions = []
         counter, input_imgs, input_kpts, input_balls, input_bg_ids, input_hitters, input_times = 0, [], [], [], [], [], []
-        for hit_frame, hitter in tqdm(answer_df_values, desc=f"{video_id:05}.mp4"):
+        for hid, (hit_frame, hitter, _) in tqdm(enumerate(answer_df_values), desc=f"{video_id:05}.mp4", total=len(answer_df_values)):
 
             hf_start, hf_end = max(hit_frame-hl, 0), min(hit_frame+hl, video_frame_count-1)
             A_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, ( 6  ):( 6+34):2] / 640 - 1.0
@@ -86,9 +86,9 @@ def main(args):
                 B_kpts_scl_ys = np.concatenate([ B_kpts_scl_ys, np.zeros((hit_frame+hl-(video_frame_count-1), 17)) ], axis=0)
                 ball_datas    = np.concatenate([ ball_datas,    np.zeros((hit_frame+hl-(video_frame_count-1),  2)) ], axis=0)
             
-            assert ball_datas.shape == (length, 2)
+            assert ball_datas.shape == (args.length, 2)
 
-            kpt_imgs = np.zeros((2, length, 64, 64))
+            kpt_imgs = np.zeros((2, args.length, 64, 64))
             for fid, hf in enumerate(range(hit_frame-hl, hit_frame+hl+1)):
                 if hf <                  0: continue
                 if hf >= video_frame_count: continue
@@ -111,8 +111,10 @@ def main(args):
                 np.expand_dims(np.nan_to_num(B_kpts_ori_xs, nan=0.0), axis=1),
                 np.expand_dims(np.nan_to_num(B_kpts_ori_ys, nan=0.0), axis=1),
             ], axis=1)
+            assert kpt_datas.shape == (args.length, 4, 17)
 
             time_datas = np.arange(hit_frame-hl, hit_frame+hl+1) / video_frame_count
+            assert time_datas.shape == (args.length, )
 
             bg_id = np.zeros(12)
             if args.mode=="train": bg_id[train_img_to_background[video_id]] = 1
@@ -128,105 +130,31 @@ def main(args):
             input_hitters.append(hitter)
 
             counter += 1
-
-            if counter == 80 or hit_frame == video_frame_count-1:
-                input_imgs   = torch.from_numpy(np.array(input_imgs,  dtype=np.float32)).to(args.device)
-                input_kpts   = torch.from_numpy(np.array(input_kpts,  dtype=np.float32)).to(args.device)
-                input_balls  = torch.from_numpy(np.array(input_balls, dtype=np.float32)).to(args.device)
-                input_times  = torch.from_numpy(np.array(input_times, dtype=np.float32)).to(args.device)
-                input_bg_ids = torch.from_numpy(np.array(input_bg_ids, dtype=np.float32)).to(args.device)
-                pred : torch.Tensor = model(input_imgs, input_kpts, input_balls, input_times, input_bg_ids)
-                predictions.append(pred.cpu().detach().numpy())
+            if counter == args.batch_size or hid == len(answer_df_values)-1:
+                input_imgs    = torch.from_numpy(np.array(input_imgs,  dtype=np.float32)).to(args.device)
+                input_kpts    = torch.from_numpy(np.array(input_kpts,  dtype=np.float32)).to(args.device)
+                input_balls   = torch.from_numpy(np.array(input_balls, dtype=np.float32)).to(args.device)
+                input_times   = torch.from_numpy(np.array(input_times, dtype=np.float32)).to(args.device)
+                input_bg_ids  = torch.from_numpy(np.array(input_bg_ids, dtype=np.float32)).to(args.device)
+                input_hitters = torch.from_numpy(np.array(input_hitters, dtype=np.float32)).to(args.device)
+                pred : torch.Tensor = model(input_imgs, input_kpts, input_balls, input_times, input_bg_ids, input_hitters)
+                for p in pred.cpu().detach().numpy(): predictions.append(p)
                 counter, input_imgs, input_kpts, input_balls, input_bg_ids, input_times = 0, [], [], [], [], []
         
-        predictions = np.array(predictions).squeeze()
+        predictions = np.array(predictions)
         assert predictions.shape == (len(answer_df_values), 2)
 
-        # A_hit_prob = np.concatenate([np.ones(5)*0.2, predictions[:, 1], np.ones(5)*0.2], axis=-1)
-        # A_hit_prob = gaussian_filter1d(A_hit_prob, sigma=1)
-        # B_hit_prob = np.concatenate([np.ones(5)*0.2, predictions[:, 2], np.ones(5)*0.2], axis=-1)
-        # B_hit_prob = gaussian_filter1d(B_hit_prob, sigma=1)
-        # A_peaks, _  = find_peaks(A_hit_prob, distance=16, prominence=0.3)
-        # B_peaks, _  = find_peaks(B_hit_prob, distance=16, prominence=0.3)
-        # A_peaks -= 5
-        # B_peaks -= 5
-        # A_hit_prob = A_hit_prob[5:-5]
-        # B_hit_prob = B_hit_prob[5:-5]
-        # while True:
-        #     break_flag = True
-        #     for pid in range(-1, len(A_peaks)):
-        #         current_peak = A_peaks[pid]   if pid!=-1             else 0
-        #         next_peak    = A_peaks[pid+1] if pid!=len(A_peaks)-1 else 10000
-        #         B_peaks_between = list(filter(lambda bp: current_peak<bp<next_peak, B_peaks.tolist()))
-        #         if len(B_peaks_between) > 1:
-        #             B_peaks_between.remove(max(B_peaks_between))
-        #             B_peaks = B_peaks.tolist()
-        #             for bp in B_peaks_between: B_peaks.remove(bp)
-        #             B_peaks = np.array(B_peaks, dtype=int)
-        #             break_flag = False
-        #     for pid in range(-1, len(B_peaks)):
-        #         current_peak = B_peaks[pid]   if pid!=-1             else 0
-        #         next_peak    = B_peaks[pid+1] if pid!=len(B_peaks)-1 else 10000
-        #         A_peaks_between = list(filter(lambda bp: current_peak<bp<next_peak, A_peaks.tolist()))
-        #         if len(A_peaks_between) > 1:
-        #             A_peaks_between.remove(max(A_peaks_between))
-        #             A_peaks = A_peaks.tolist()
-        #             for bp in A_peaks_between: A_peaks.remove(bp)
-        #             A_peaks = np.array(A_peaks, dtype=int)
-        #             break_flag = False
-        #     if break_flag: break
-
-        # fig = plt.figure(figsize=(20, 5))
-        # if args.mode == "train":
-        #     hit_df_values = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter"]].values
-
-        # ax = fig.add_subplot(2, 1, 1)
-        # # ax.plot(np.arange(0, video_frame_count), predictions[:, 0], "o-", c='b', ms=2, lw=1, label="X")
-        # ax.plot(np.arange(0, video_frame_count), predictions[:, 1], "o-", c='r', ms=2, lw=1, label="A")
-        # ax.plot(np.arange(0, video_frame_count), predictions[:, 2], "o-", c='g', ms=2, lw=1, label="B")
-        # ax.legend()
-        # ax.grid(axis='y')
-        # ax.set_xticks(np.arange(0, 1500, 100))
-        # if args.mode == "train":
-        #     for hit_frame, hitter in hit_df_values:
-        #         if   hitter == 'A': ax.axvline(x=hit_frame, c='r', ls="--", lw=1)
-        #         elif hitter == 'B': ax.axvline(x=hit_frame, c='g', ls="--", lw=1)
-        # ax.set_xlim(0, video_frame_count)
-        
-        # ax = fig.add_subplot(2, 1, 2)
-        # # ax.plot(np.arange(0, video_frame_count), predictions[:, 0], "o-", c='b', ms=2, lw=1, label="X")
-        # ax.scatter(np.arange(0, video_frame_count)[A_peaks], A_hit_prob[A_peaks], c="black", s=30, label="A peak")
-        # ax.plot(np.arange(0, video_frame_count), A_hit_prob, "o-", c='r', ms=2, lw=1, label="A")
-        # ax.scatter(np.arange(0, video_frame_count)[B_peaks], B_hit_prob[B_peaks], c="black", s=30, label="B peak")
-        # ax.plot(np.arange(0, video_frame_count), B_hit_prob, "o-", c='g', ms=2, lw=1, label="B")
-        # ax.legend()
-        # ax.grid(axis='y')
-        # ax.set_xticks(np.arange(0, 1500, 100))
-        # if args.mode == "train":
-        #     for hit_frame, hitter in hit_df_values:
-        #         if   hitter == 'A': ax.axvline(x=hit_frame, c='r', ls="--", lw=1)
-        #         elif hitter == 'B': ax.axvline(x=hit_frame, c='g', ls="--", lw=1)
-        # ax.set_xlim(0, video_frame_count)
-
-        # # plt.title(f"{video_id:05}.mp4 - HitFrame count: {len(hit_df_values)} / Peaks count: {len(pred_peaks)}", fontsize=20)
-        # plt.title(f"{video_id:05}.mp4 - HitFrame count: {len(hit_df_values)} / Peak count: {len(A_peaks)+len(B_peaks)}", fontsize=20)
-        # plt.suptitle(f"model: {args.model_path}", fontsize=10)
-        # plt.tight_layout()
-        # # plt.savefig(f"{args.save_dir}/{video_id:05}.png")
-        # plt.savefig(f"data/{args.mode}/{video_id:05}/prediction_1_hitter.png")
-        # # plt.show()
-        # plt.close()
-
-        predictions = np.argmax(predictions, axis=-1).squeeze()
+        predictions = np.argmax(predictions, axis=-1)
         assert predictions.shape == (len(answer_df_values), )
         output_df = pd.DataFrame({
             "ShotSeq"  : np.arange(len(answer_df_values)),
-            "HitFrame" : answer_df_values[0],
-            "Hitter"   : answer_df_values[1],
-            "RoundHead": predictions,
+            "HitFrame" : answer_df_values[:, 0],
+            "Hitter"   : answer_df_values[:, 1],
+            "RoundHead": answer_df_values[:, 2],
+            "Backhand" : predictions,
         })
         output_df = output_df.set_index("ShotSeq")
-        output_df.to_csv(f"data/{args.mode}/{video_id:05}/prediction_2_round_head.csv")
+        output_df.to_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_prediction_3_backhand.csv")
 
     return
 
@@ -235,14 +163,17 @@ def main(args):
 """ Execution """
 if __name__ == "__main__":
 
-    load_dir = "2023.05.09-03.56.21"
+    load_dir = "2023.05.09-16.51.26"
     DEFAULT_MODE       = "valid"
+    DEFAULT_BATCH_SIZE = 80
     DEFAULT_DEVICE     = "cuda:0"
-    DEFAULT_MODEL_PATH = f"logs/2_round_head/{load_dir}/best_valid_loss.pt"
-    # DEFAULT_SAVE_DIR   = f"predictions/2_round_head/{target}"
+    DEFAULT_MODEL_PATH = f"logs/3_backhand/{load_dir}/best_valid_loss.pt"
+    # DEFAULT_SAVE_DIR   = f"predictions/3_backhand/{target}"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-m",  "--mode",       type=str, default=DEFAULT_MODE)
+    parser.add_argument("-bs", "--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    parser.add_argument("-l",  "--length",     type=int, default=31)
     parser.add_argument("-d",  "--device",     type=str, default=DEFAULT_DEVICE)
     parser.add_argument("-mp", "--model-path", type=str, default=DEFAULT_MODEL_PATH)
     # parser.add_argument("-sd", "--save-dir",   type=str, default=DEFAULT_SAVE_DIR)

@@ -11,14 +11,13 @@ import pandas as pd
 import seaborn as sn
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from typing import Any, Iterator, Tuple
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dataloader import RoundHeadColumnsDataset, split_datasets
-from models import RoundHeadModel
-from misc import train_formal_list
+from dataloader import RoundHeadDataset
+from models import SingleOutputModel
+from misc import train_formal_list, train_informal_list
 
 
 
@@ -77,7 +76,7 @@ def forward_step(model, batch_inputs, device) -> torch.Tensor:
     return batch_pred
 
 
-def train_epoch(model:RoundHeadModel, dataloader, criterion,
+def train_epoch(model:SingleOutputModel, dataloader, criterion,
                 optimizer, lr_scheduler, device, weight) -> None:
     
     loss_metric, acc_metric = Metric(50), Metric(50)
@@ -115,7 +114,7 @@ def train_epoch(model:RoundHeadModel, dataloader, criterion,
     return loss_metric.avg(), acc_metric.avg(), confusion_matrixs
 
 
-def valid_epoch(model:RoundHeadModel, dataloader,
+def valid_epoch(model:SingleOutputModel, dataloader,
                 criterion, device, weight) -> None:
     
     loss_metric, acc_metric = Metric(1000), Metric(1000)
@@ -156,7 +155,9 @@ def main(args) -> None:
     shutil.copy("dataloader.py", args.save_dir)
     tensorboard = SummaryWriter(args.save_dir)
 
-    video_id_list = train_formal_list.copy()
+    if   args.mode ==   "formal": video_id_list = train_formal_list.copy()
+    elif args.mode == "informal": video_id_list = train_informal_list.copy()
+    else                        : video_id_list = list(range(1, 800+1))
     random.shuffle(video_id_list)
     train_video_id_list = video_id_list[:int(len(video_id_list)*0.8)]
     valid_video_id_list = video_id_list[int(len(video_id_list)*0.8):]
@@ -164,8 +165,8 @@ def main(args) -> None:
     with open(f"{args.save_dir}/valid_video_id_list.py", 'w') as file:
         json.dump(valid_video_id_list, file, indent=4)
 
-    my_train_dataset = RoundHeadColumnsDataset(args.length, train_video_id_list)
-    my_valid_dataset = RoundHeadColumnsDataset(args.length, valid_video_id_list)
+    my_train_dataset = RoundHeadDataset(args.length, train_video_id_list)
+    my_valid_dataset = RoundHeadDataset(args.length, valid_video_id_list)
     my_train_dataLoader = DataLoader(
         my_train_dataset, args.batch_size,
         shuffle=True, pin_memory=True, drop_last=True,
@@ -181,11 +182,10 @@ def main(args) -> None:
     train_btc_avg      = sum(my_train_dataset.round_head_count) / len(my_train_dataset.round_head_count)
     train_weight       = [ (train_btc_avg/btc) for btc in my_train_dataset.round_head_count ]
     train_weight_torch = torch.from_numpy(np.array(train_weight)).float().to(args.device)
-
     valid_btc_avg      = sum(my_valid_dataset.round_head_count) / len(my_valid_dataset.round_head_count)
     valid_weight       = [ (valid_btc_avg/btc) for btc in my_valid_dataset.round_head_count ]
 
-    model        = RoundHeadModel(args.length).to(args.device)
+    model        = SingleOutputModel(length=args.length, output_dim=2, softmax=True).to(args.device)
     criterion    = torch.nn.CrossEntropyLoss(weight=train_weight_torch)
     optimizer    = torch.optim.Adam(model.parameters(), lr=1e-3)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999)
@@ -224,20 +224,20 @@ def main(args) -> None:
 """ Execution """
 if __name__ == "__main__":
 
-    DEFAULT_MODE     = "train"
+    DEFAULT_MODE     = "formal"
     DEFAULT_DEVICE   = "cuda:0"
-    DEFAULT_SAVE_DIR = f"logs/2_round_head/{time.strftime('%Y.%m.%d-%H.%M.%S', time.localtime())}"
+    DEFAULT_SAVE_DIR = f"logs/{DEFAULT_MODE}/3_backhand/{time.strftime('%Y.%m.%d-%H.%M.%S', time.localtime())}"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-m",  "--mode",        type=str, default=DEFAULT_MODE)
     parser.add_argument("-e",  "--epochs",      type=int, default=200)
-    parser.add_argument("-l",  "--length",      type=int, default=31)
+    parser.add_argument("-l",  "--length",      type=int, default=15)
     parser.add_argument("-bs", "--batch-size",  type=int, default=80)
     parser.add_argument("-nw", "--num-workers", type=int, default=4)
     parser.add_argument("-d",  "--device",      type=str, default=DEFAULT_DEVICE)
     parser.add_argument("-sd", "--save-dir",    type=str, default=DEFAULT_SAVE_DIR)
 
     args = parser.parse_args()
-    assert args.mode in [ "train", "valid" ]
+    assert args.mode in [ "formal", "informal", "all" ]
     assert (args.length-1) % 2 == 0
     main(args)

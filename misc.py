@@ -5,6 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+# ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== #
+
 train_formal_list = [
     1, 2, 3, 4, 5, 8, 9, 10, 11, 14, 17, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 38, 39, 40,
     41, 42, 45, 46, 47, 48, 49, 50, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 70, 71,
@@ -61,8 +63,41 @@ valid_informal_list = [
     2, 8, 10, 15, 18, 27, 51, 56, 65, 71, 75, 78, 89, 92, 103, 114, 120, 121, 122, 126, 133, 154, 156, 160, 165, 168
 ]
 
+test_formal_list = [
+    170, 171, 174, 175, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 188, 189, 190, 191, 192, 193, 195,
+    197, 198, 199, 201, 202, 204, 205, 206, 207, 208, 209, 210, 211, 213, 214, 215, 216, 218, 219, 220, 221,
+    222, 223, 224, 225, 228, 229, 230, 231, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247,
+    248, 249, 250, 251, 252, 253, 255, 256, 257, 258, 259, 260, 262, 263, 264, 265, 266, 267, 268, 269, 270,
+    271, 272, 273, 274, 275, 277, 278, 279, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 293, 294, 295,
+    296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316,
+    317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 331, 332, 333, 334, 335, 336, 337, 338,
+    339, 340, 341, 342, 343, 344, 345, 347, 348, 349, 350, 351, 352, 354, 355, 356, 357, 358, 359, 362, 363,
+    364, 365, 366, 367, 368, 369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384,
+    385, 387, 388, 389, 390, 392, 393, 394, 395, 397, 399
+]
+
+test_informal_list = [
+    172, 173, 176, 187, 194, 196, 200, 203, 212, 217, 226, 227, 232, 233, 234, 254, 261,
+    276, 280, 291, 292, 330, 346, 353, 360, 361, 386, 391, 396, 398
+]
+
+# ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== #
+
+# valid_video_id = [
+#     335, 624, 776, 381, 489, 720, 558, 796, 655, 374, 736, 99, 724, 755, 622, 449, 301, 194, 203, 400,
+#     267, 27, 240, 766, 287, 215, 504, 131, 109, 403, 16, 354, 58, 484, 764, 204, 688, 73, 294, 519,
+#     797, 413, 216, 540, 118, 174, 279, 429, 629, 469, 599, 388, 171, 775, 135, 663, 162, 277, 743, 713,
+#     404, 252, 153, 54, 499, 530, 163, 686, 465, 258, 89, 565, 293, 285, 161, 324, 772, 18, 619, 691,
+#     56, 581, 98, 792, 158, 690, 729, 402, 103, 633, 243, 410, 183, 232, 19, 296, 111, 38, 129, 618, 394,
+#     297, 154, 347, 586, 615, 291, 175, 59, 613, 26, 188, 318, 317, 226, 474, 390, 345, 137, 603, 573,
+#     372, 719, 510, 497, 543, 165, 542, 134, 707, 590, 97, 705, 361, 191, 187, 206, 220, 342, 343, 694,
+#     620, 490, 732, 623, 503, 572, 262, 740, 231, 785, 737, 340, 657, 760, 420, 350, 754, 245, 225,
+# ]
+
+# ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== #
+
 def get_video_id_list():
-    formal_mp4s = os.listdir("data/train_mp4/informal")
+    formal_mp4s = os.listdir("data/test_mp4/informal")
     print([ int(filename.split('.')[0]) for filename in formal_mp4s ])
 
 def view_video_infos():
@@ -125,7 +160,7 @@ def crop_video(video_id):
     return
 
 def plot_image():
-    image = cv2.imread("data/train_background/00011.png")
+    image = cv2.imread("data/background/00012.png")
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     plt.imshow(image)
     plt.show()
@@ -445,7 +480,6 @@ def detect_same_frames():  # Failed
     print(img5.sum())
     return
 
-
 def create_posec3d_dataset():
     import mmcv, random, mmengine
     
@@ -529,9 +563,244 @@ def statisticize_ball_type_counts():
     print(ball_type_count, sum(ball_type_count))
     return
 
+def rename_files():
+    for video_id in tqdm(train_formal_list):
+        try:
+            from_filename = f"data/train/{video_id:05}/prediction_1_hitter.csv" 
+            to_filename   = f"data/train/{video_id:05}/{video_id:05}_prediction_1_hitter.csv"
+            os.rename(from_filename, to_filename)
+            from_filename = f"data/train/{video_id:05}/prediction_1_hitter.png" 
+            to_filename   = f"data/train/{video_id:05}/{video_id:05}_prediction_1_hitter.png"
+            os.rename(from_filename, to_filename)
+        except FileNotFoundError:
+            continue
+    return
+
+def patch_classification():
+    import json
+    from data.test_background.classification import img_to_background as test_img_to_background
+    # from data.test_background.classification import background_to_img as test_background_to_img
+    
+    for video_id in test_informal_list: test_img_to_background[video_id] = 13
+    test_img_to_background = dict(sorted(test_img_to_background.items(), key=lambda i: i[0]))
+    background_id_test_to_train = {
+        0: 7,
+        1: 5,
+        2: 2,
+        3: 4,
+        4: 3,
+        5: 6,
+        6: 11,
+        7: 1,
+        8: 9,
+        9: 8,
+        10: 0,
+        11: 11,
+        12: 11,
+        13: 12,
+    }
+    for video_id in range(170, 399+1):
+        test_img_to_background[video_id] = background_id_test_to_train[test_img_to_background[video_id]]
+
+    # test_background_to_img_adjusted = {}
+    # for background_id in background_id_test_to_train.keys():
+    #     test_background_to_img_adjusted[background_id_test_to_train[background_id]] = \
+    #         test_background_to_img[background_id]
+    # test_background_to_img = test_background_to_img_adjusted
+    # test_background_to_img = dict(sorted(test_background_to_img.items(), key=lambda i: i[0]))
+
+    with open(f"outputs/background/avg_without_players/test/type/classification.py", mode='w') as classification_file:
+        classification_file.write("img_to_background = ")
+        json.dump(test_img_to_background, classification_file, indent=4)
+        # classification_file.write("\n\nbackground_to_img = ")
+        # json.dump(test_background_to_img, classification_file, indent=4)
+
+def analyze_last_shot():
+    last_shot_frame_list, last_shot_diff_list = [], []
+    for video_id in tqdm(range(1, 800+1)):
+        last_shot_frame = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame"]].values[-1]
+        video_length = len(pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv").values)
+        last_shot_frame_list.append(last_shot_frame.tolist()[0])
+        last_shot_diff_list.append(video_length-last_shot_frame.tolist()[0])
+    print("Max last_shot_frame:", max(last_shot_frame_list))
+    print("Min last_shot_frame:", min(last_shot_frame_list))
+    print("Max last_shot_diff: ", max(last_shot_diff_list))
+    print("Min last_shot_diff: ", min(last_shot_diff_list))
+    return
+
+def calculate_1_hitter_accuracy():
+    valid_video_id_list = [
+        335, 624, 776, 381, 489, 720, 558, 796, 655, 374, 736, 99, 724, 755, 622, 449, 301, 194, 203, 400,
+        267, 27, 240, 766, 287, 215, 504, 131, 109, 403, 16, 354, 58, 484, 764, 204, 688, 73, 294, 519,
+        797, 413, 216, 540, 118, 174, 279, 429, 629, 469, 599, 388, 171, 775, 135, 663, 162, 277, 743, 713,
+        404, 252, 153, 54, 499, 530, 163, 686, 465, 258, 89, 565, 293, 285, 161, 324, 772, 18, 619, 691,
+        56, 581, 98, 792, 158, 690, 729, 402, 103, 633, 243, 410, 183, 232, 19, 296, 111, 38, 129, 618, 394,
+        297, 154, 347, 586, 615, 291, 175, 59, 613, 26, 188, 318, 317, 226, 474, 390, 345, 137, 603, 573,
+        372, 719, 510, 497, 543, 165, 542, 134, 707, 590, 97, 705, 361, 191, 187, 206, 220, 342, 343, 694,
+        620, 490, 732, 623, 503, 572, 262, 740, 231, 785, 737, 340, 657, 760, 420, 350, 754, 245, 225,
+    ]
+    total_hit_frame_score, total_hitter_score = [], []
+    for video_id in tqdm(valid_video_id_list):
+        ground_truth = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter"]].values
+        prediction   = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_prediction_1_hitter.csv")[["HitFrame", "Hitter"]].values
+        if len(ground_truth) == len(prediction):
+            hit_frame_score, hitter_score = [], []
+            for frame_id in range(len(ground_truth)):
+                if abs(ground_truth[frame_id, 0]-prediction[frame_id, 0]) <= 2:
+                    hit_frame_score.append(0.1)
+                    if ground_truth[frame_id, 1] == prediction[frame_id, 1]:
+                        hitter_score.append(0.1)
+            total_hit_frame_score.append(sum(hit_frame_score)/len(ground_truth))
+            total_hitter_score.append(sum(hitter_score)/len(ground_truth))
+    print("total_hit_frame_score:", sum(total_hit_frame_score)/len(valid_video_id_list))
+    print("total_hitter_score   :", sum(total_hitter_score)/len(valid_video_id_list))
+    return
+
+def fill_blank():
+    os.makedirs("outputs/final_answer", exist_ok=True)
+    dfs = []
+    for video_id in tqdm(range(1, 169+1)):
+        pred_df_values = pd.read_csv(f"data/valid/{video_id:05}/{video_id:05}_prediction_1_hitter.csv")
+        winner         = ['X']*len(pred_df_values)
+        winner[-1]     = 'A'
+        pred_df_values["VideoName"]         = [f"{video_id:05}.mp4"]*len(pred_df_values)
+        pred_df_values["ShotSeq"]           = pred_df_values[["ShotSeq"]] +1
+        pred_df_values["RoundHead"]         = [   1 ]*len(pred_df_values)
+        pred_df_values["Backhand"]          = [   1 ]*len(pred_df_values)
+        pred_df_values["BallHeight"]        = [   1 ]*len(pred_df_values)
+        pred_df_values["LandingX"]          = [ 0.0 ]*len(pred_df_values)
+        pred_df_values["LandingY"]          = [ 0.0 ]*len(pred_df_values)
+        pred_df_values["HitterLocationX"]   = [ 0.0 ]*len(pred_df_values)
+        pred_df_values["HitterLocationY"]   = [ 0.0 ]*len(pred_df_values)
+        pred_df_values["DefenderLocationX"] = [ 0.0 ]*len(pred_df_values)
+        pred_df_values["DefenderLocationY"] = [ 0.0 ]*len(pred_df_values)
+        pred_df_values["BallType"]          = [   1 ]*len(pred_df_values)
+        pred_df_values["Winner"]            = winner
+        dfs.append(pred_df_values)
+    # for video_id in tqdm(range(170, 399+1)):
+    #     pred_df_values = pd.read_csv(f"data/valid/00002/00002_prediction_1_hitter.csv")
+    #     winner         = ['X']*len(pred_df_values)
+    #     winner[-1]     = 'A'
+    #     pred_df_values["VideoName"]         = [f"{video_id:05}.mp4"]*len(pred_df_values)
+    #     pred_df_values["ShotSeq"]           = pred_df_values[["ShotSeq"]] +1
+    #     pred_df_values["RoundHead"]         = [   1 ]*len(pred_df_values)
+    #     pred_df_values["Backhand"]          = [   1 ]*len(pred_df_values)
+    #     pred_df_values["BallHeight"]        = [   1 ]*len(pred_df_values)
+    #     pred_df_values["LandingX"]          = [ 0.0 ]*len(pred_df_values)
+    #     pred_df_values["LandingY"]          = [ 0.0 ]*len(pred_df_values)
+    #     pred_df_values["HitterLocationX"]   = [ 0.0 ]*len(pred_df_values)
+    #     pred_df_values["HitterLocationY"]   = [ 0.0 ]*len(pred_df_values)
+    #     pred_df_values["DefenderLocationX"] = [ 0.0 ]*len(pred_df_values)
+    #     pred_df_values["DefenderLocationY"] = [ 0.0 ]*len(pred_df_values)
+    #     pred_df_values["BallType"]          = [   1 ]*len(pred_df_values)
+    #     pred_df_values["Winner"]            = winner
+    dfs = pd.concat(dfs)
+    dfs = dfs.set_index("VideoName")
+    dfs.to_csv("outputs/final_answer_valid.csv")
+    return
+
+def statisticize_pose_and_location_diff():
+    truth_columns = [ "HitFrame", "Hitter", "HitterLocationX", "HitterLocationY",
+                                            "DefenderLocationX", "DefenderLocationY" ]
+    # pose_columns  = [ "Player A right_ankle X", "Player A right_ankle Y",
+    #                   "Player B right_ankle X", "Player B right_ankle Y" ]
+    pose_columns  = [ "Player A right_big_toe X", "Player A right_big_toe Y",
+                      "Player B right_big_toe X", "Player B right_big_toe Y" ]
+    # pose_columns  = [ "Player A right_small_toe X", "Player A right_small_toe Y",
+    #                   "Player B right_small_toe X", "Player B right_small_toe Y" ]
+    
+    total_hit_diff,  total_def_diff  = [], []
+    total_hit_score, total_def_score = [], []
+
+    for video_id in tqdm(range(1, 800+1)):
+        truth_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[truth_columns].values
+        # pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv")[pose_columns].values
+        pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose_wholebody.csv")[pose_columns].values
+
+        hit_diff, def_diff = [], []
+        hit_score, def_score = [], []
+        for hit_frame, hitter, hit_x, hit_y, def_x, def_y in truth_df_values:
+            pAraX, pAraY, pBraX, pBraY = pose_df_values[hit_frame]
+            if hitter=='A':
+                pred_hit_x, pred_hit_y = pAraX, pAraY
+                pred_def_x, pred_def_y = pBraX, pBraY
+            else:
+                pred_hit_x, pred_hit_y = pBraX, pBraY
+                pred_def_x, pred_def_y = pAraX, pAraY
+            if not (np.isnan(pred_hit_x) or np.isnan(pred_hit_y)):
+                diff = ((pred_hit_x-hit_x)**2+(pred_hit_y-hit_y)**2)**0.5
+                hit_diff.append(diff)
+                hit_score.append(diff<10)
+            if not (np.isnan(pred_def_x) or np.isnan(pred_def_y)):
+                diff = ((pred_def_x-def_x)**2+(pred_def_y-def_y)**2)**0.5
+                def_diff.append(diff)
+                def_score.append(diff<10)
+
+        # print(video_id, def_diff, def_score)
+        total_hit_diff.append(sum(hit_diff)/len(truth_df_values))
+        total_def_diff.append(sum(def_diff)/len(truth_df_values))
+        total_hit_score.append(sum(hit_score)/len(truth_df_values))
+        total_def_score.append(sum(def_score)/len(truth_df_values))
+
+    print("total_hit_diff :", sum(total_hit_diff)/800)
+    print("total_def_diff :", sum(total_def_diff)/800)
+    print("total_hit_score:", sum(total_hit_score)/800)
+    print("total_def_score:", sum(total_def_score)/800)
+    return
+
+def plot_pose_and_location():
+    truth_columns = [ "HitFrame", "Hitter", "HitterLocationX", "HitterLocationY",
+                                            "DefenderLocationX", "DefenderLocationY" ]
+    # pose_columns  = [ "Player A right_ankle X", "Player A right_ankle Y",
+    #                   "Player B right_ankle X", "Player B right_ankle Y" ]
+    pose_columns  = [ "Player A right_big_toe X", "Player A right_big_toe Y",
+                      "Player B right_big_toe X", "Player B right_big_toe Y" ]
+    # pose_columns  = [ "Player A right_small_toe X", "Player A right_small_toe Y",
+    #                   "Player B right_small_toe X", "Player B right_small_toe Y" ]
+    
+    total_hit_diff,  total_def_diff  = [], []
+    total_hit_score, total_def_score = [], []
+
+    for video_id in tqdm(range(1, 800+1)):
+        truth_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[truth_columns].values
+        # pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv")[pose_columns].values
+        pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose_wholebody.csv")[pose_columns].values
+
+        hit_diff, def_diff = [], []
+        hit_score, def_score = [], []
+        for hit_frame, hitter, hit_x, hit_y, def_x, def_y in truth_df_values:
+            pAraX, pAraY, pBraX, pBraY = pose_df_values[hit_frame]
+            if hitter=='A':
+                pred_hit_x, pred_hit_y = pAraX, pAraY
+                pred_def_x, pred_def_y = pBraX, pBraY
+            else:
+                pred_hit_x, pred_hit_y = pBraX, pBraY
+                pred_def_x, pred_def_y = pAraX, pAraY
+            if not (np.isnan(pred_hit_x) or np.isnan(pred_hit_y)):
+                diff = ((pred_hit_x-hit_x)**2+(pred_hit_y-hit_y)**2)**0.5
+                hit_diff.append(diff)
+                hit_score.append(diff<10)
+            if not (np.isnan(pred_def_x) or np.isnan(pred_def_y)):
+                diff = ((pred_def_x-def_x)**2+(pred_def_y-def_y)**2)**0.5
+                def_diff.append(diff)
+                def_score.append(diff<10)
+
+        # print(video_id, def_diff, def_score)
+        total_hit_diff.append(sum(hit_diff)/len(truth_df_values))
+        total_def_diff.append(sum(def_diff)/len(truth_df_values))
+        total_hit_score.append(sum(hit_score)/len(truth_df_values))
+        total_def_score.append(sum(def_score)/len(truth_df_values))
+
+    print("total_hit_diff :", sum(total_hit_diff)/800)
+    print("total_def_diff :", sum(total_def_diff)/800)
+    print("total_hit_score:", sum(total_hit_score)/800)
+    print("total_def_score:", sum(total_def_score)/800)
+    return
+
+# ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== #
 
 if __name__ == "__main__":
-    get_video_id_list()
+    # get_video_id_list()
     # plot_first_frames()
     # darken_video(1)
     # crop_video(746)
@@ -555,4 +824,9 @@ if __name__ == "__main__":
     # detect_same_frames()
     # create_posec3d_dataset()
     # statisticize_ball_type_counts()
+    # rename_files()
+    # patch_classification()
+    # analyze_last_shot()
+    # statisticize_pose_and_location_diff()
+    # fill_blank()
     pass

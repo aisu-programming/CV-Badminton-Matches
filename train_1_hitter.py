@@ -11,21 +11,19 @@ import pandas as pd
 import seaborn as sn
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from typing import Any, Iterator, Tuple
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dataloader import HitterDataset, split_datasets
-from models import HitterModel
-from misc import train_formal_list
+from dataloader import HitterDataset
+from models import MultiOutputModel
+from misc import train_formal_list, train_informal_list
 
 
 
-""" Functions """
+""" Classes """
 class Metric():
     def __init__(self, length) -> None:
-        super().__init__()
         self.length = length
         self.values = []
 
@@ -38,6 +36,8 @@ class Metric():
         return np.average(self.values)
 
 
+
+""" Functions """
 def weighted_acc(pred, truth, weight):
     acc = 0.0
     # assert np.max(np.max(pred), np.max(truth)) <= len(weight)
@@ -52,7 +52,8 @@ def get_lr(optimizer) -> float:
     
 
 def plot_confusion_matrix(confusion_matrix, filename, title):
-    cm_df = pd.DataFrame(confusion_matrix, index=list(range(3)), columns=list(range(3)))
+    labels = list(range(len(confusion_matrix)))
+    cm_df = pd.DataFrame(confusion_matrix, index=labels, columns=labels)
     plt.figure(figsize=(6, 5))
     s = sn.heatmap(cm_df, annot=True)
     s.set_xlabel("prediction", fontsize=10)
@@ -81,8 +82,8 @@ def train_epoch(model, dataloader, criterion, optimizer, lr_scheduler, device, l
     oacc_metric = Metric(50)  # Overall ACC
     nacc_metric = Metric(50)  # Narrow  ACC
     acc_weight  = (np.array(weight)/sum(weight)).tolist()
-    ocms = np.zeros((3, 3))   # Overall confusion matrix
-    ncms = np.zeros((3, 3))   # Narrow  confusion matrix
+    ocms = np.zeros((len(weight), len(weight)))  # Overall confusion matrix
+    ncms = np.zeros((len(weight), len(weight)))  # Narrow  confusion matrix
 
     pbar = tqdm(enumerate(dataloader), desc="[TRAIN]", total=len(dataloader))
     for batch_i, (batch_input, batch_truth) in pbar:
@@ -108,20 +109,20 @@ def train_epoch(model, dataloader, criterion, optimizer, lr_scheduler, device, l
         nacc_metric.append(nacc)
 
         for bt, bp in zip(batch_truth, ao_batch_pred):
-            ocms += confusion_matrix(bt, bp, labels=[0,1,2])  # , sample_weight=weight)
+            ocms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
         for bt, bp in zip(n_batch_truth, an_batch_pred):
-            ncms += confusion_matrix(bt, bp, labels=[0,1,2])  # , sample_weight=weight)
+            ncms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
 
         pbar.set_description(f"[TRAIN] loss: {loss_metric.avg():.5f}, " + \
                              f"Overall Acc: {oacc_metric.avg()*100:.3f}%, " + \
                              f"Narrow Acc: {nacc_metric.avg()*100:.3f}%, " + \
                              f"LR: {get_lr(optimizer):.10f}")
 
-    with np.printoptions(linewidth=150, formatter={'float': '{:5.03f}'.format, 'int': '{:2} '.format}):
-        print("pred :", batch_pred[0, 0])
-        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0]))
-        print("truth:", batch_truth[0])
-        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0]])
+    with np.printoptions(linewidth=160, formatter={'float': '{:5.03f}'.format, 'int': '{:2} '.format}):
+        print("pred :", batch_pred[0, 0], batch_pred[0, 1], batch_pred[0, 2], batch_pred[0, 3])
+        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0, :40]))
+        print("truth:", batch_truth[0, :40])
+        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0, :40]])
 
     return loss_metric.avg(), oacc_metric.avg(), nacc_metric.avg(), ocms, ncms
 
@@ -131,8 +132,8 @@ def valid_epoch(model, dataloader, criterion, device, length, weight) -> None:
     oacc_metric = Metric(1000)  # Overall ACC
     nacc_metric = Metric(1000)  # Narrow  ACC
     acc_weight  = (np.array(weight)/sum(weight)).tolist()
-    ocms = np.zeros((3, 3))     # Overall confusion matrix
-    ncms = np.zeros((3, 3))     # Narrow  confusion matrix
+    ocms = np.zeros((len(weight), len(weight)))  # Overall confusion matrix
+    ncms = np.zeros((len(weight), len(weight)))  # Narrow  confusion matrix
 
     pbar = tqdm(enumerate(dataloader), desc="[VALID]", total=len(dataloader))
     for batch_i, (batch_input, batch_truth) in pbar:
@@ -153,19 +154,19 @@ def valid_epoch(model, dataloader, criterion, device, length, weight) -> None:
         nacc_metric.append(nacc)
 
         for bt, bp in zip(batch_truth, ao_batch_pred):
-            ocms += confusion_matrix(bt, bp, labels=[0,1,2])  # , sample_weight=weight)
+            ocms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
         for bt, bp in zip(n_batch_truth, an_batch_pred):
-            ncms += confusion_matrix(bt, bp, labels=[0,1,2])  # , sample_weight=weight)
+            ncms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
 
         pbar.set_description(f"[VALID] loss: {loss_metric.avg():.5f}, " + \
                              f"Overall Acc: {oacc_metric.avg()*100:.3f}%, " + \
                              f"Narrow Acc: {nacc_metric.avg()*100:.3f}%")
 
-    with np.printoptions(linewidth=150, formatter={'float': '{:5.03f}'.format, 'int': '{:2} '.format}):
-        print("pred :", batch_pred[0, 0])
-        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0]))
-        print("truth:", batch_truth[0])
-        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0]])
+    with np.printoptions(linewidth=160, formatter={'float': '{:5.03f}'.format, 'int': '{:2} '.format}):
+        print("pred :", batch_pred[0, 0], batch_pred[0, 1], batch_pred[0, 2], batch_pred[0, 3])
+        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0, :40]))
+        print("truth:", batch_truth[0, :40])
+        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0, :40]])
         
     return loss_metric.avg(), oacc_metric.avg(), nacc_metric.avg(), ocms, ncms
 
@@ -178,7 +179,9 @@ def main(args) -> None:
     shutil.copy("dataloader.py", args.save_dir)
     tensorboard = SummaryWriter(args.save_dir)
 
-    video_id_list = train_formal_list.copy()
+    if   args.mode ==    "all": video_id_list = list(range(1, 800+1))
+    elif args.mode == "formal": video_id_list = train_formal_list.copy()
+    else                      : video_id_list = train_informal_list.copy()
     random.shuffle(video_id_list)
     train_video_id_list = video_id_list[:int(len(video_id_list)*0.8)]
     valid_video_id_list = video_id_list[int(len(video_id_list)*0.8):]
@@ -186,8 +189,8 @@ def main(args) -> None:
     with open(f"{args.save_dir}/valid_video_id_list.py", 'w') as file:
         json.dump(valid_video_id_list, file, indent=4)
 
-    my_train_dataset = HitterDataset(args.length, train_video_id_list)
-    my_valid_dataset = HitterDataset(args.length, valid_video_id_list)
+    my_train_dataset = HitterDataset(train_video_id_list, args.sample, args.length)
+    my_valid_dataset = HitterDataset(valid_video_id_list, args.sample, args.length)
     my_train_dataLoader = DataLoader(
         my_train_dataset, args.batch_size,
         shuffle=True, pin_memory=True, drop_last=True,
@@ -203,14 +206,13 @@ def main(args) -> None:
     train_btc_avg      = sum(my_train_dataset.ball_type_count) / len(my_train_dataset.ball_type_count)
     train_weight       = [ (train_btc_avg/btc) for btc in my_train_dataset.ball_type_count ]
     train_weight_torch = torch.from_numpy(np.array(train_weight)).float().to(args.device)
-
     valid_btc_avg      = sum(my_valid_dataset.ball_type_count) / len(my_valid_dataset.ball_type_count)
     valid_weight       = [ (valid_btc_avg/btc) for btc in my_valid_dataset.ball_type_count ]
 
-    model        = HitterModel(args.length).to(args.device)
+    model        = MultiOutputModel(length=args.length, output_dim=3, softmax=True).to(args.device)
     criterion    = torch.nn.CrossEntropyLoss(weight=train_weight_torch)
-    optimizer    = torch.optim.Adam(model.parameters(), lr=7e-4)
-    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9993)
+    optimizer    = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.lr_decay)
 
     best_valid_loss, best_valid_oacc, best_valid_nacc = np.inf, 0, 0
     for epoch in range(1, args.epochs+1):
@@ -259,20 +261,22 @@ def main(args) -> None:
 """ Execution """
 if __name__ == "__main__":
 
-    DEFAULT_MODE     = "train"
+    DEFAULT_MODE     = "all"
     DEFAULT_DEVICE   = "cuda:0"
-    DEFAULT_SAVE_DIR = f"logs/1_hitter/{time.strftime('%Y.%m.%d-%H.%M.%S', time.localtime())}"
-
+    DEFAULT_SAVE_DIR = f"logs/{DEFAULT_MODE}/1_hitter/{time.strftime('%Y.%m.%d-%H.%M.%S', time.localtime())}"
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m",  "--mode",        type=str, default=DEFAULT_MODE)
-    parser.add_argument("-e",  "--epochs",      type=int, default=200)
-    parser.add_argument("-l",  "--length",      type=int, default=31)
-    parser.add_argument("-bs", "--batch-size",  type=int, default=80)
-    parser.add_argument("-nw", "--num-workers", type=int, default=4)
-    parser.add_argument("-d",  "--device",      type=str, default=DEFAULT_DEVICE)
-    parser.add_argument("-sd", "--save-dir",    type=str, default=DEFAULT_SAVE_DIR)
+    parser.add_argument("-m",  "--mode",          type=str,   default=DEFAULT_MODE)
+    parser.add_argument("-e",  "--epochs",        type=int,   default=200)
+    parser.add_argument("-lr", "--learning-rate", type=float, default=7e-4)
+    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.9993)
+    parser.add_argument("-bs", "--batch-size",    type=int,   default=80)
+    parser.add_argument("-nw", "--num-workers",   type=int,   default=4)
+    parser.add_argument("-l",  "--length",        type=int,   default=45, help="Length of each sample")
+    parser.add_argument("-s",  "--sample",        type=int,   default=10, help="Sample per video")
+    parser.add_argument("-d",  "--device",        type=str,   default=DEFAULT_DEVICE)
+    parser.add_argument("-sd", "--save-dir",      type=str,   default=DEFAULT_SAVE_DIR)
 
     args = parser.parse_args()
-    assert args.mode in [ "train", "valid" ]
+    assert args.mode in [ "all", "formal", "informal" ]
     assert (args.length-1) % 2 == 0
     main(args)
