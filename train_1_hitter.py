@@ -15,9 +15,9 @@ from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dataloader import HitterDataset
-from models import MultiOutputModel
-from misc import train_formal_list, train_informal_list
+from libs.dataloader import HitterDataset
+from libs.models import MultiOutputModel
+from libs.misc import train_formal_list, train_informal_list
 
 
 

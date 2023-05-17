@@ -169,7 +169,7 @@ def get_court_line_by_line_fitting(white_mask):
     return [ ofsll, ofslr, ofsllb, ofslrb, fsll, fslr, fsllb, fslrb, dbsll, dbslr, dbsllb, dbslrb, sbsll, sbslr, sbsllb, sbslrb ]
 
 
-from misc import train_formal_list
+from libs.misc import train_formal_list
 
 problem_list = [ 197, 207, 278, 446, 453, 688 ]
 

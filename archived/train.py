@@ -9,8 +9,8 @@ from tqdm import tqdm
 from typing import Any, Iterator, Tuple
 from torch.utils.data import DataLoader
 
-from dataloader import MyMapDataset, split_datasets
-from models import MyModel
+from libs.dataloader import MyMapDataset, split_datasets
+from libs.models import MyModel
 
 
 

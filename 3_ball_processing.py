@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter
 
-from ball_detection_33 import main as detect_ball
+from libs.ball_detection_33 import main as detect_ball
 
 
 

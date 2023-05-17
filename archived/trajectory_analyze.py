@@ -6,7 +6,7 @@ from tqdm import tqdm
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 
-from misc import train_formal_list
+from libs.misc import train_formal_list
 
 
 def equation_1st(x, a, b):

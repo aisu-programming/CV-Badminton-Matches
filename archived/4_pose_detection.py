@@ -9,7 +9,7 @@ from mmdet.apis import inference_detector, init_detector
 from mmpose.apis import inference_top_down_pose_model, init_pose_model, process_mmdet_results, vis_pose_result
 from mmpose.datasets import DatasetInfo
 
-from pose_keypoints import pose_keypoints
+from libs.pose_keypoints import pose_keypoints
 from data.background.classification import train_img_to_background, valid_img_to_background, test_img_to_background, background_details
 
 

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from scipy.signal import find_peaks
 from scipy.ndimage import gaussian_filter1d
 
-from dataloader import draw_limbs  # , draw_kpts
+from libs.dataloader import draw_limbs  # , draw_kpts
 from data.background.classification import train_img_to_background, valid_img_to_background, test_img_to_background
 
 

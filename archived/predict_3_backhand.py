@@ -8,8 +8,8 @@ from tqdm import tqdm
 # from scipy.signal import find_peaks
 # from scipy.ndimage import gaussian_filter1d
 
-from dataloader import draw_limbs  # , draw_kpts
-from misc import train_formal_list, valid_formal_list
+from libs.dataloader import draw_limbs  # , draw_kpts
+from libs.misc import train_formal_list, valid_formal_list
 from data.train_background.classification import img_to_background as train_img_to_background
 from data.valid_background.classification import img_to_background as valid_img_to_background
 
