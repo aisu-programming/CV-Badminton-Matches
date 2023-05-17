@@ -84,15 +84,18 @@ def plot_confusion_matrix(confusion_matrix, filename, title):
 
 
 def forward_step(model, batch_inputs, device) -> torch.Tensor:
-    batch_imgs, batch_kpts, batch_balls, batch_times, batch_bg_id, batch_hitter = batch_inputs
-    batch_imgs   = batch_imgs.to(device)
-    batch_kpts   = batch_kpts.to(device)
-    batch_balls  = batch_balls.to(device)
-    batch_times  = batch_times.to(device)
-    batch_bg_id  = batch_bg_id.to(device)
-    batch_hitter = batch_hitter.to(device)
+    # batch_imgs, batch_kpt_imgs, batch_kpts, batch_balls, batch_times, batch_bg_id, batch_hitter = batch_inputs
+    batch_kpt_imgs, batch_kpts, batch_balls, batch_times, batch_bg_id, batch_hitter = batch_inputs
+    # batch_imgs     = batch_imgs.to(device)
+    batch_kpt_imgs = batch_kpt_imgs.to(device)
+    batch_kpts     = batch_kpts.to(device)
+    batch_balls    = batch_balls.to(device)
+    batch_times    = batch_times.to(device)
+    batch_bg_id    = batch_bg_id.to(device)
+    batch_hitter   = batch_hitter.to(device)
     # print(batch_imgs.shape, batch_kpts.shape)
-    batch_pred = model(batch_imgs, batch_kpts, batch_balls, batch_times, batch_bg_id, batch_hitter)
+    # batch_pred = model(batch_imgs, batch_kpt_imgs, batch_kpts, batch_balls, batch_times, batch_bg_id, batch_hitter)
+    batch_pred = model(batch_kpt_imgs, batch_kpts, batch_balls, batch_times, batch_bg_id, batch_hitter)
     return batch_pred
 
 
@@ -114,11 +117,11 @@ def train_epoch(model:SingleOutputModel, dataloader, criterion,
         loss_metric.append(loss.item())
         batch_truth = batch_truth.cpu().detach().numpy()
         batch_pred  = batch_pred.cpu().detach().numpy()
-        # batch_pred[:, 0]  *= 1280
-        # batch_pred[:, 1]  *=  720
-        # batch_truth[:, 0] *= 1280
-        # batch_truth[:, 1] *=  720
 
+        batch_pred[:, 0]  *= 1280
+        batch_pred[:, 1]  *=  720
+        batch_truth[:, 0] *= 1280
+        batch_truth[:, 1] *=  720
         acc = calculate_acc(batch_pred, batch_truth, target)
         acc_metric.append(acc)
         pbar.set_description(f"[TRAIN] loss: {loss_metric.avg():.5f}, " + \
@@ -148,11 +151,11 @@ def valid_epoch(model:SingleOutputModel, dataloader,
         loss_metric.append(loss.item())
         batch_truth = batch_truth.cpu().detach().numpy()
         batch_pred  = batch_pred.cpu().detach().numpy()
-        # batch_pred[:, 0]  *= 1280
-        # batch_pred[:, 1]  *=  720
-        # batch_truth[:, 0] *= 1280
-        # batch_truth[:, 1] *=  720
 
+        batch_pred[:, 0]  *= 1280
+        batch_pred[:, 1]  *=  720
+        batch_truth[:, 0] *= 1280
+        batch_truth[:, 1] *=  720
         acc = calculate_acc(batch_pred, batch_truth, target)
         acc_metric.append(acc)
         pbar.set_description(f"[VALID] loss: {loss_metric.avg():.5f}, " + \
@@ -233,7 +236,7 @@ def main(args) -> None:
 """ Execution """
 if __name__ == "__main__":
 
-    DEFAULT_TARGET = "HitterLocation"
+    DEFAULT_TARGET = "Landing"
     DEFAULT_MODE   = "all"
     DEFAULT_DEVICE = "cuda:0"
 
@@ -241,11 +244,11 @@ if __name__ == "__main__":
     parser.add_argument("-t",  "--target",        type=str,   default=DEFAULT_TARGET)
     parser.add_argument("-m",  "--mode",          type=str,   default=DEFAULT_MODE)
     parser.add_argument("-e",  "--epochs",        type=int,   default=150)
-    parser.add_argument("-lr", "--learning-rate", type=float, default=1e-2)
-    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.998)
-    parser.add_argument("-bs", "--batch-size",    type=int,   default=64)
+    parser.add_argument("-lr", "--learning-rate", type=float, default=5e-4)
+    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.9975)
+    parser.add_argument("-bs", "--batch-size",    type=int,   default=80)
     parser.add_argument("-nw", "--num-workers",   type=int,   default=4)
-    parser.add_argument("-l",  "--length",        type=int,   default=15)
+    parser.add_argument("-l",  "--length",        type=int,   default=7)
     parser.add_argument("-d",  "--device",        type=str,   default=DEFAULT_DEVICE)
 
     args = parser.parse_args()

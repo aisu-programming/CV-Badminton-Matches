@@ -24,13 +24,17 @@ def main():
         # if video_id > 171: break
 
         img = cv2.imread(f"outputs/background/avg_without_players/{MODE}/{video_id:05}.png")
+        if img is None:
+            bg_cls[video_id] = 2
+            continue
+
         if len(bg_t_imgs) == 0:
             bg_t_imgs.append(img)
             bg_cls[video_id] = len(bg_t_imgs)-1
             continue
 
         distance = np.sum((np.array(bg_t_imgs)-img)**2, axis=(1, 2, 3))
-        is_alike = distance < 130000000
+        is_alike = distance < 150000000
 
         if is_alike.any():
             bg_cls[video_id] = int(np.argmin(distance))
@@ -54,11 +58,11 @@ def main():
     with open(f"outputs/background/avg_without_players/{MODE}/type/classification.py", mode='w') as classification_file:
         classification_file.write("img_to_background = ")
         json.dump(bg_cls, classification_file, indent=4)
-        classification_file.write("\n\nbackground_to_img = ")
-        json.dump({
-            btimg_id: list(dict(filter(lambda item: item[1]==btimg_id, bg_cls.items())).keys())
-            for btimg_id in range(len(bg_t_imgs))
-        }, classification_file, indent=4)
+        # classification_file.write("\n\nbackground_to_img = ")
+        # json.dump({
+        #     btimg_id: list(dict(filter(lambda item: item[1]==btimg_id, bg_cls.items())).keys())
+        #     for btimg_id in range(len(bg_t_imgs))
+        # }, classification_file, indent=4)
 
     return
 

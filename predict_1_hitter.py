@@ -1,3 +1,4 @@
+""" Libraries """
 import os
 import torch
 import argparse
@@ -9,11 +10,11 @@ from scipy.signal import find_peaks
 from scipy.ndimage import gaussian_filter1d
 
 from dataloader import draw_limbs  # , draw_kpts
-from misc import train_formal_list, valid_formal_list
-from data.train_background.classification import img_to_background as train_img_to_background
-from data.valid_background.classification import img_to_background as valid_img_to_background
+from data.background.classification import train_img_to_background, valid_img_to_background, test_img_to_background
 
 
+
+""" Functions """
 def main(args):
 
     os.makedirs(args.save_dir, exist_ok=True)
@@ -21,43 +22,50 @@ def main(args):
     model = torch.load(args.model_path).to(args.device)
     model = model.eval()
 
-    if args.mode=="train": video_id_list = train_formal_list
-    else                 : video_id_list = valid_formal_list
+    if   args.mode=="train": video_id_list = list(range(1, 800+1))
+    elif args.mode=="valid": video_id_list = list(range(1, 169+1))
+    else                   : video_id_list = list(range(170, 399+1))
 
-    for video_id in video_id_list:
+    for vid, video_id in enumerate(video_id_list):
 
-        # if video_id < 95: continue
+        if video_id > 100: continue
 
         ball_df_values = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_ball_33_adj.csv")[["Adjusted X", "Adjusted Y"]].values
-        pose_df_values = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_pose.csv").values
+        pose_df_values = pd.read_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_pose_wholebody.csv").values
         video_frame_count = len(pose_df_values)
-        length, hl = 25, 12
+        length, hl = args.length, (args.length-1)//2
+        kpt_count = 133
+        predictions, predictions_divider = np.zeros((video_frame_count, 3)), np.zeros((video_frame_count, 1))
+        input_kpt_imgs, input_kpts, input_balls, input_bg_ids, input_times = [], [], [], [], []
 
-        predictions = []
-        counter, input_imgs, input_kpts, input_balls, input_bg_ids, input_times = 0, [], [], [], [], []
-        for frame in tqdm(range(video_frame_count), desc=f"{video_id:05}.mp4"):
+        for frame in tqdm(range(video_frame_count), desc=f"[{args.mode}] {video_id:05} - Predicting hit frames"):
 
             hf_start, hf_end = max(frame-hl, 0), min(frame+hl, video_frame_count-1)
-            A_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, ( 6  ):( 6+34):2] / 640 - 1.0
-            A_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, ( 6+1):( 6+34):2] / 360 - 1.0
-            B_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, (45  ):(45+34):2] / 640 - 1.0
-            B_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, (45+1):(45+34):2] / 360 - 1.0
+            A_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, (  6  ):(  6+kpt_count*2):2] / 640 - 1.0
+            A_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, (  6+1):(  6+kpt_count*2):2] / 360 - 1.0
+            B_kpts_ori_xs = pose_df_values[hf_start:hf_end+1, (277  ):(277+kpt_count*2):2] / 640 - 1.0
+            B_kpts_ori_ys = pose_df_values[hf_start:hf_end+1, (277+1):(277+kpt_count*2):2] / 360 - 1.0
             
-            A_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, ( 6  ):( 6+34):2]
-            A_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, ( 6+1):( 6+34):2]
-            B_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, (45  ):(45+34):2]
-            B_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, (45+1):(45+34):2]
-            if np.isnan(A_kpts_scl_xs).all() or np.isnan(A_kpts_scl_ys).all() or \
-                np.isnan(B_kpts_scl_xs).all() or np.isnan(B_kpts_scl_ys).all(): continue
-            A_kpts_scl_xs = A_kpts_scl_xs - (np.nanmax(A_kpts_scl_xs) + np.nanmin(A_kpts_scl_xs)) / 2
-            A_kpts_scl_ys = A_kpts_scl_ys - (np.nanmax(A_kpts_scl_ys) + np.nanmin(A_kpts_scl_ys)) / 2
-            B_kpts_scl_xs = B_kpts_scl_xs - (np.nanmax(B_kpts_scl_xs) + np.nanmin(B_kpts_scl_xs)) / 2
-            B_kpts_scl_ys = B_kpts_scl_ys - (np.nanmax(B_kpts_scl_ys) + np.nanmin(B_kpts_scl_ys)) / 2
+            A_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, (  6  ):(  6+kpt_count*2):2]
+            A_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, (  6+1):(  6+kpt_count*2):2]
+            B_kpts_scl_xs = pose_df_values[hf_start:hf_end+1, (277  ):(277+kpt_count*2):2]
+            B_kpts_scl_ys = pose_df_values[hf_start:hf_end+1, (277+1):(277+kpt_count*2):2]
 
-            A_kpts_scl_xs /= max(np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys)))
-            A_kpts_scl_ys /= max(np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys)))
-            B_kpts_scl_xs /= max(np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys)))
-            B_kpts_scl_ys /= max(np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys)))
+            if not np.isnan(A_kpts_scl_xs).all():
+                A_kpts_scl_xs = A_kpts_scl_xs - (np.nanmax(A_kpts_scl_xs) + np.nanmin(A_kpts_scl_xs)) / 2
+            if not np.isnan(A_kpts_scl_ys).all():
+                A_kpts_scl_ys = A_kpts_scl_ys - (np.nanmax(A_kpts_scl_ys) + np.nanmin(A_kpts_scl_ys)) / 2
+            if not np.isnan(B_kpts_scl_xs).all():
+                B_kpts_scl_xs = B_kpts_scl_xs - (np.nanmax(B_kpts_scl_xs) + np.nanmin(B_kpts_scl_xs)) / 2
+            if not np.isnan(B_kpts_scl_ys).all():
+                B_kpts_scl_ys = B_kpts_scl_ys - (np.nanmax(B_kpts_scl_ys) + np.nanmin(B_kpts_scl_ys)) / 2
+
+            if not np.isnan(A_kpts_scl_xs).all() or not np.isnan(A_kpts_scl_ys).all():
+                A_kpts_scl_xs /= np.nanmax([np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys))])
+                A_kpts_scl_ys /= np.nanmax([np.nanmax(np.abs(A_kpts_scl_xs)), np.nanmax(np.abs(A_kpts_scl_ys))])
+            if not np.isnan(B_kpts_scl_xs).all() or not np.isnan(B_kpts_scl_ys).all():
+                B_kpts_scl_xs /= np.nanmax([np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys))])
+                B_kpts_scl_ys /= np.nanmax([np.nanmax(np.abs(B_kpts_scl_xs)), np.nanmax(np.abs(B_kpts_scl_ys))])
 
             ball_datas = ball_df_values[hf_start:hf_end+1]
             ball_datas[:, 0] = ball_datas[:, 0] / 640 - 1.0
@@ -65,26 +73,29 @@ def main(args):
             ball_datas = np.nan_to_num(ball_datas, nan=0.0)
 
             if frame-hl < 0:
-                A_kpts_ori_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_ori_xs], axis=0)
-                A_kpts_ori_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_ori_ys], axis=0)
-                B_kpts_ori_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_ori_xs], axis=0)
-                B_kpts_ori_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_ori_ys], axis=0)
-                A_kpts_scl_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_scl_xs], axis=0)
-                A_kpts_scl_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), A_kpts_scl_ys], axis=0)
-                B_kpts_scl_xs = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_scl_xs], axis=0)
-                B_kpts_scl_ys = np.concatenate([ np.zeros((abs(frame-hl), 17)), B_kpts_scl_ys], axis=0)
-                ball_datas    = np.concatenate([ np.zeros((abs(frame-hl), 2)),  ball_datas   ], axis=0)
+                kpt_filler  = np.zeros((abs(frame-hl), kpt_count))
+                ball_filler = np.zeros((abs(frame-hl),         2))
+                A_kpts_ori_xs = np.concatenate([ kpt_filler,  A_kpts_ori_xs ], axis=0)
+                A_kpts_ori_ys = np.concatenate([ kpt_filler,  A_kpts_ori_ys ], axis=0)
+                B_kpts_ori_xs = np.concatenate([ kpt_filler,  B_kpts_ori_xs ], axis=0)
+                B_kpts_ori_ys = np.concatenate([ kpt_filler,  B_kpts_ori_ys ], axis=0)
+                A_kpts_scl_xs = np.concatenate([ kpt_filler,  A_kpts_scl_xs ], axis=0)
+                A_kpts_scl_ys = np.concatenate([ kpt_filler,  A_kpts_scl_ys ], axis=0)
+                B_kpts_scl_xs = np.concatenate([ kpt_filler,  B_kpts_scl_xs ], axis=0)
+                B_kpts_scl_ys = np.concatenate([ kpt_filler,  B_kpts_scl_ys ], axis=0)
+                ball_datas    = np.concatenate([ ball_filler, ball_datas    ], axis=0)
             if frame+hl > video_frame_count-1:
-                A_kpts_ori_xs = np.concatenate([ A_kpts_ori_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                A_kpts_ori_ys = np.concatenate([ A_kpts_ori_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                B_kpts_ori_xs = np.concatenate([ B_kpts_ori_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                B_kpts_ori_ys = np.concatenate([ B_kpts_ori_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                A_kpts_scl_xs = np.concatenate([ A_kpts_scl_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                A_kpts_scl_ys = np.concatenate([ A_kpts_scl_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                B_kpts_scl_xs = np.concatenate([ B_kpts_scl_xs, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                B_kpts_scl_ys = np.concatenate([ B_kpts_scl_ys, np.zeros((frame+hl-(video_frame_count-1), 17)) ], axis=0)
-                ball_datas    = np.concatenate([ ball_datas,    np.zeros((frame+hl-(video_frame_count-1),  2)) ], axis=0)
-            
+                kpt_filler  = np.zeros((frame+hl-(video_frame_count-1), kpt_count))
+                ball_filler = np.zeros((frame+hl-(video_frame_count-1),         2))
+                A_kpts_ori_xs = np.concatenate([ A_kpts_ori_xs, kpt_filler  ], axis=0)
+                A_kpts_ori_ys = np.concatenate([ A_kpts_ori_ys, kpt_filler  ], axis=0)
+                B_kpts_ori_xs = np.concatenate([ B_kpts_ori_xs, kpt_filler  ], axis=0)
+                B_kpts_ori_ys = np.concatenate([ B_kpts_ori_ys, kpt_filler  ], axis=0)
+                A_kpts_scl_xs = np.concatenate([ A_kpts_scl_xs, kpt_filler  ], axis=0)
+                A_kpts_scl_ys = np.concatenate([ A_kpts_scl_ys, kpt_filler  ], axis=0)
+                B_kpts_scl_xs = np.concatenate([ B_kpts_scl_xs, kpt_filler  ], axis=0)
+                B_kpts_scl_ys = np.concatenate([ B_kpts_scl_ys, kpt_filler  ], axis=0)
+                ball_datas    = np.concatenate([ ball_datas,    ball_filler ], axis=0)
             assert ball_datas.shape == (length, 2)
 
             kpt_imgs = np.zeros((2, length, 64, 64))
@@ -92,14 +103,14 @@ def main(args):
                 if hf <                  0: continue
                 if hf >= video_frame_count: continue
                 if pose_df_values[hf, 1] > 0.5:
-                    kpts_x = A_kpts_scl_xs[fid]
-                    kpts_y = A_kpts_scl_ys[fid]
+                    kpts_x = A_kpts_scl_xs[fid, :17]
+                    kpts_y = A_kpts_scl_ys[fid, :17]
                     kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                     kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                     kpt_imgs[0, fid] = draw_limbs(kpts_x, kpts_y)
-                if pose_df_values[hf, 40] > 0.5:
-                    kpts_x = B_kpts_scl_xs[fid]
-                    kpts_y = B_kpts_scl_ys[fid]
+                if pose_df_values[hf, 272] > 0.5:
+                    kpts_x = B_kpts_scl_xs[fid, :17]
+                    kpts_y = B_kpts_scl_ys[fid, :17]
                     kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                     kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                     kpt_imgs[1, fid] = draw_limbs(kpts_x, kpts_y)
@@ -110,32 +121,42 @@ def main(args):
                 np.expand_dims(np.nan_to_num(B_kpts_ori_xs, nan=0.0), axis=1),
                 np.expand_dims(np.nan_to_num(B_kpts_ori_ys, nan=0.0), axis=1),
             ], axis=1)
+            assert kpt_datas.shape == (length, 4, kpt_count)
 
             time_datas = np.arange(frame-hl, frame+hl+1) / video_frame_count
 
-            bg_id = np.zeros(12)
-            if args.mode=="train": bg_id[train_img_to_background[video_id]] = 1
-            else                 : bg_id[valid_img_to_background[video_id]] = 1
+            bg_id = np.zeros(13)
+            if   args.mode=="train": bg_id[train_img_to_background[video_id]] = 1
+            elif args.mode=="valid": bg_id[valid_img_to_background[video_id]] = 1
+            else:
+                if test_img_to_background[video_id] == 13:
+                    bg_id[11] = 1
+                else:
+                    bg_id[test_img_to_background[video_id]] = 1
             
-            input_imgs.append(kpt_imgs)
+            input_kpt_imgs.append(kpt_imgs)
             input_kpts.append(kpt_datas)
             input_balls.append(ball_datas)
             input_times.append(time_datas)
             input_bg_ids.append(bg_id)
 
-            counter += 1
-            if counter == 80 or frame == video_frame_count-1:
-                input_imgs   = torch.from_numpy(np.array(input_imgs,  dtype=np.float32)).to(args.device)
-                input_kpts   = torch.from_numpy(np.array(input_kpts,  dtype=np.float32)).to(args.device)
-                input_balls  = torch.from_numpy(np.array(input_balls, dtype=np.float32)).to(args.device)
-                input_times  = torch.from_numpy(np.array(input_times, dtype=np.float32)).to(args.device)
-                input_bg_ids = torch.from_numpy(np.array(input_bg_ids, dtype=np.float32)).to(args.device)
-                pred : torch.Tensor = model(input_imgs, input_kpts, input_balls, input_times, input_bg_ids)
-                pred = pred[:, hl, :].squeeze(dim=1)
-                for p in pred.cpu().detach().numpy(): predictions.append(p)
-                counter, input_imgs, input_kpts, input_balls, input_bg_ids, input_times = 0, [], [], [], [], []
+            if (frame+1)%args.batch_size==0 or frame==video_frame_count-1:
+                input_kpt_imgs = torch.from_numpy(np.array(input_kpt_imgs,  dtype=np.float32)).to(args.device)
+                input_kpts     = torch.from_numpy(np.array(input_kpts,  dtype=np.float32)).to(args.device)
+                input_balls    = torch.from_numpy(np.array(input_balls, dtype=np.float32)).to(args.device)
+                input_times    = torch.from_numpy(np.array(input_times, dtype=np.float32)).to(args.device)
+                input_bg_ids   = torch.from_numpy(np.array(input_bg_ids, dtype=np.float32)).to(args.device)
+                batch_predictions : torch.Tensor = model(input_kpt_imgs, input_kpts, input_balls, input_times, input_bg_ids)
+                pred_frame = (frame+1)-len(batch_predictions)
+                for pred in batch_predictions.cpu().detach().numpy():
+                    idx_start, idx_end = max(pred_frame-hl, 0),   min(pred_frame+hl, video_frame_count-1)
+                    p_start,   p_end   = idx_start-pred_frame+hl, idx_end-pred_frame+hl
+                    predictions[idx_start:idx_end+1] += pred[p_start:p_end+1]
+                    predictions_divider[idx_start:idx_end+1] += 1
+                    pred_frame += 1
+                input_kpt_imgs, input_kpts, input_balls, input_bg_ids, input_times = [], [], [], [], []
         
-        predictions = np.array(predictions)
+        predictions /= predictions_divider
         assert predictions.shape == (video_frame_count, 3)
 
 
@@ -144,8 +165,8 @@ def main(args):
         A_hit_prob = gaussian_filter1d(A_hit_prob, sigma=1)
         B_hit_prob = np.concatenate([np.ones(5)*0.2, predictions[:, 2], np.ones(5)*0.2], axis=-1)
         B_hit_prob = gaussian_filter1d(B_hit_prob, sigma=1)
-        A_peaks, _  = find_peaks(A_hit_prob, distance=16, prominence=0.3)
-        B_peaks, _  = find_peaks(B_hit_prob, distance=16, prominence=0.3)
+        A_peaks, _  = find_peaks(A_hit_prob, distance=16, prominence=0.25)
+        B_peaks, _  = find_peaks(B_hit_prob, distance=16, prominence=0.25)
         A_peaks -= 5
         B_peaks -= 5
         A_hit_prob = A_hit_prob[5:-5]
@@ -213,7 +234,7 @@ def main(args):
                 for hit_frame, hitter in hit_df_values:
                     if   hitter == 'A': ax.axvline(x=hit_frame, c='r', ls="--", lw=1)
                     elif hitter == 'B': ax.axvline(x=hit_frame, c='g', ls="--", lw=1)
-            ax.set_xlim(0, video_frame_count)
+            ax.set_xlim(-10, video_frame_count+10)
             
             ax = fig.add_subplot(2, 1, 2)
             # ax.plot(np.arange(0, video_frame_count), predictions[:, 0], "o-", c='b', ms=2, lw=1, label="X")
@@ -228,7 +249,7 @@ def main(args):
                 for hit_frame, hitter in hit_df_values:
                     if   hitter == 'A': ax.axvline(x=hit_frame, c='r', ls="--", lw=1)
                     elif hitter == 'B': ax.axvline(x=hit_frame, c='g', ls="--", lw=1)
-            ax.set_xlim(0, video_frame_count)
+            ax.set_xlim(-10, video_frame_count+10)
 
             if args.mode == "train":
                 title = f"{video_id:05}.mp4 - HitFrame count: {len(hit_df_values)} / Peak count: {len(A_peaks)+len(B_peaks)}"
@@ -238,8 +259,8 @@ def main(args):
             plt.suptitle(title, fontsize=20)
             plt.title(f"model: {args.model_path}", fontsize=10)
             plt.tight_layout()
+            plt.savefig(f"data/{args.mode}/{video_id:05}/{video_id:05}_prediction_1_hitter.png")
             plt.savefig(f"{args.save_dir}/{video_id:05}.png")
-            plt.savefig(f"data/{args.mode}/{video_id:05}/prediction_1_hitter.png")
             # plt.show()
             plt.close()
 
@@ -251,12 +272,12 @@ def main(args):
         hitters = hitters[:int(len(A_peaks)+len(B_peaks))]
         hit_frames = sorted(A_peaks.tolist() + B_peaks.tolist())
         output_df = pd.DataFrame({
-            "ShotSeq" : np.arange(len(hitters)),
+            "ShotSeq" : np.arange(len(hitters))+1,
             "HitFrame": np.array(hit_frames),
             "Hitter"  : np.array(hitters),
         })
         output_df = output_df.set_index("ShotSeq")
-        output_df.to_csv(f"data/{args.mode}/{video_id:05}/prediction_1_hitter.csv")
+        output_df.to_csv(f"data/{args.mode}/{video_id:05}/{video_id:05}_prediction_1_hitter.csv")
 
     return
 
@@ -265,20 +286,23 @@ def main(args):
 """ Execution """
 if __name__ == "__main__":
 
-    load_dir = "2023.05.09-14.22.12"
-    DEFAULT_MODE       = "valid"
-    DEFAULT_DEVICE     = "cuda:0"
-    DEFAULT_MODEL_PATH = f"logs/1_hitter/{load_dir}/best_valid_loss.pt"
+    LOAD_DIR           = "2023.05.15-13.55.43"  # HitFrame count:  / HitFrame: 
+    DEFAULT_MODE       = "train"
+    DEFAULT_DEVICE     = "cuda:1"
+    DEFAULT_MODEL_PATH = f"logs/all/1_hitter/{LOAD_DIR}/best_valid_loss.pt"
+    DEFAULT_BATCH_SIZE = 90
+    DEFAULT_LENGTH     = 45  # 24G Maximum: batch_size * length = 9000
     DEFAULT_PLOT       = True
-    DEFAULT_SAVE_DIR   = f"predictions/1_hitter/{load_dir}_{DEFAULT_MODE}"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-m",  "--mode",       type=str,  default=DEFAULT_MODE)
     parser.add_argument("-d",  "--device",     type=str,  default=DEFAULT_DEVICE)
     parser.add_argument("-mp", "--model-path", type=str,  default=DEFAULT_MODEL_PATH)
+    parser.add_argument("-bs", "--batch-size", type=int,  default=DEFAULT_BATCH_SIZE)
+    parser.add_argument("-l",  "--length",     type=int,  default=DEFAULT_LENGTH)
     parser.add_argument("-p",  "--plot",       type=bool, default=DEFAULT_PLOT)
-    parser.add_argument("-sd", "--save-dir",   type=str,  default=DEFAULT_SAVE_DIR)
 
     args = parser.parse_args()
-    assert args.mode in [ "train", "valid" ]
+    assert args.mode in [ "train", "valid", "test" ]
+    args.save_dir = f"predictions/1_hitter/{LOAD_DIR}_{args.mode}"
     main(args)

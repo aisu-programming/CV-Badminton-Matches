@@ -167,7 +167,7 @@ def plot_image():
     return
 
 def plot_background_lines():
-    from data.train_background.classification import background_details
+    from data.background.classification import background_details
     for bg_id in range(12):
         image = cv2.imread(f"data/train_background/{bg_id:05}.png")
         bgd = background_details[bg_id]
@@ -578,8 +578,7 @@ def rename_files():
 
 def patch_classification():
     import json
-    from data.test_background.classification import img_to_background as test_img_to_background
-    # from data.test_background.classification import background_to_img as test_background_to_img
+    from data.background.classification import test_img_to_background
     
     for video_id in test_informal_list: test_img_to_background[video_id] = 13
     test_img_to_background = dict(sorted(test_img_to_background.items(), key=lambda i: i[0]))
@@ -630,73 +629,36 @@ def analyze_last_shot():
 
 def calculate_1_hitter_accuracy():
     valid_video_id_list = [
-        335, 624, 776, 381, 489, 720, 558, 796, 655, 374, 736, 99, 724, 755, 622, 449, 301, 194, 203, 400,
-        267, 27, 240, 766, 287, 215, 504, 131, 109, 403, 16, 354, 58, 484, 764, 204, 688, 73, 294, 519,
-        797, 413, 216, 540, 118, 174, 279, 429, 629, 469, 599, 388, 171, 775, 135, 663, 162, 277, 743, 713,
-        404, 252, 153, 54, 499, 530, 163, 686, 465, 258, 89, 565, 293, 285, 161, 324, 772, 18, 619, 691,
-        56, 581, 98, 792, 158, 690, 729, 402, 103, 633, 243, 410, 183, 232, 19, 296, 111, 38, 129, 618, 394,
-        297, 154, 347, 586, 615, 291, 175, 59, 613, 26, 188, 318, 317, 226, 474, 390, 345, 137, 603, 573,
-        372, 719, 510, 497, 543, 165, 542, 134, 707, 590, 97, 705, 361, 191, 187, 206, 220, 342, 343, 694,
-        620, 490, 732, 623, 503, 572, 262, 740, 231, 785, 737, 340, 657, 760, 420, 350, 754, 245, 225,
+        467, 406, 114, 178, 273, 680, 790, 571, 759, 664, 253, 2, 711, 556, 50, 590, 530, 715, 569, 385, 414,
+        298, 248, 538, 429, 705, 321, 428, 595, 167, 703, 780, 749, 786, 500, 794, 318, 38, 137, 602, 313, 49,
+        416, 621, 74, 239, 533, 212, 699, 494, 351, 559, 738, 532, 393, 619, 39, 552, 345, 256, 107, 607, 215,
+        577, 635, 87, 756, 337, 485, 291, 149, 300, 748, 700, 75, 355, 618, 694, 542, 517, 475, 18, 146, 400,
+        731, 177, 141, 192, 130, 100, 425, 645, 486, 294, 588, 570, 745, 409, 303, 233, 663, 608, 729, 724,
+        683, 327, 5, 564, 369, 78, 728, 787, 209, 478, 534, 657, 240, 286, 537, 207, 433, 81, 554, 562, 111,
+        789, 610, 214, 86, 613, 196, 480, 615, 469, 407, 404, 173, 249, 510, 513, 735, 563, 31, 292, 183, 156,
+        685, 765, 487, 633, 48, 170, 793, 113, 505, 329, 704, 535, 651, 328
     ]
-    total_hit_frame_score, total_hitter_score = [], []
+    total_frame_count_score, total_hit_frame_score = [], []
     for video_id in tqdm(valid_video_id_list):
         ground_truth = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[["HitFrame", "Hitter"]].values
         prediction   = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_prediction_1_hitter.csv")[["HitFrame", "Hitter"]].values
         if len(ground_truth) == len(prediction):
-            hit_frame_score, hitter_score = [], []
+            total_frame_count_score.append(1)
+            hit_frame_score = []
             for frame_id in range(len(ground_truth)):
                 if abs(ground_truth[frame_id, 0]-prediction[frame_id, 0]) <= 2:
-                    hit_frame_score.append(0.1)
-                    if ground_truth[frame_id, 1] == prediction[frame_id, 1]:
-                        hitter_score.append(0.1)
+                    hit_frame_score.append(1)
             total_hit_frame_score.append(sum(hit_frame_score)/len(ground_truth))
-            total_hitter_score.append(sum(hitter_score)/len(ground_truth))
-    print("total_hit_frame_score:", sum(total_hit_frame_score)/len(valid_video_id_list))
-    print("total_hitter_score   :", sum(total_hitter_score)/len(valid_video_id_list))
+    print("total_hit_frame_score  :", sum(total_hit_frame_score)/len(total_hit_frame_score))
+    print("total_frame_count_score:", sum(total_frame_count_score)/len(valid_video_id_list))
     return
 
-def fill_blank():
-    os.makedirs("outputs/final_answer", exist_ok=True)
-    dfs = []
-    for video_id in tqdm(range(1, 169+1)):
-        pred_df_values = pd.read_csv(f"data/valid/{video_id:05}/{video_id:05}_prediction_1_hitter.csv")
-        winner         = ['X']*len(pred_df_values)
-        winner[-1]     = 'A'
-        pred_df_values["VideoName"]         = [f"{video_id:05}.mp4"]*len(pred_df_values)
-        pred_df_values["ShotSeq"]           = pred_df_values[["ShotSeq"]] +1
-        pred_df_values["RoundHead"]         = [   1 ]*len(pred_df_values)
-        pred_df_values["Backhand"]          = [   1 ]*len(pred_df_values)
-        pred_df_values["BallHeight"]        = [   1 ]*len(pred_df_values)
-        pred_df_values["LandingX"]          = [ 0.0 ]*len(pred_df_values)
-        pred_df_values["LandingY"]          = [ 0.0 ]*len(pred_df_values)
-        pred_df_values["HitterLocationX"]   = [ 0.0 ]*len(pred_df_values)
-        pred_df_values["HitterLocationY"]   = [ 0.0 ]*len(pred_df_values)
-        pred_df_values["DefenderLocationX"] = [ 0.0 ]*len(pred_df_values)
-        pred_df_values["DefenderLocationY"] = [ 0.0 ]*len(pred_df_values)
-        pred_df_values["BallType"]          = [   1 ]*len(pred_df_values)
-        pred_df_values["Winner"]            = winner
-        dfs.append(pred_df_values)
-    # for video_id in tqdm(range(170, 399+1)):
-    #     pred_df_values = pd.read_csv(f"data/valid/00002/00002_prediction_1_hitter.csv")
-    #     winner         = ['X']*len(pred_df_values)
-    #     winner[-1]     = 'A'
-    #     pred_df_values["VideoName"]         = [f"{video_id:05}.mp4"]*len(pred_df_values)
-    #     pred_df_values["ShotSeq"]           = pred_df_values[["ShotSeq"]] +1
-    #     pred_df_values["RoundHead"]         = [   1 ]*len(pred_df_values)
-    #     pred_df_values["Backhand"]          = [   1 ]*len(pred_df_values)
-    #     pred_df_values["BallHeight"]        = [   1 ]*len(pred_df_values)
-    #     pred_df_values["LandingX"]          = [ 0.0 ]*len(pred_df_values)
-    #     pred_df_values["LandingY"]          = [ 0.0 ]*len(pred_df_values)
-    #     pred_df_values["HitterLocationX"]   = [ 0.0 ]*len(pred_df_values)
-    #     pred_df_values["HitterLocationY"]   = [ 0.0 ]*len(pred_df_values)
-    #     pred_df_values["DefenderLocationX"] = [ 0.0 ]*len(pred_df_values)
-    #     pred_df_values["DefenderLocationY"] = [ 0.0 ]*len(pred_df_values)
-    #     pred_df_values["BallType"]          = [   1 ]*len(pred_df_values)
-    #     pred_df_values["Winner"]            = winner
-    dfs = pd.concat(dfs)
-    dfs = dfs.set_index("VideoName")
-    dfs.to_csv("outputs/final_answer_valid.csv")
+def total_frames():
+    total_frame = 0
+    for video_id in tqdm(range(152+1, 265+1)):
+        video_length = len(pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv").values)
+        total_frame += video_length
+    print(total_frame)
     return
 
 def statisticize_pose_and_location_diff():
@@ -748,8 +710,46 @@ def statisticize_pose_and_location_diff():
     print("total_def_score:", sum(total_def_score)/800)
     return
 
+def find_best_bias_greedy(xs, ys, threshold, initial_step=16.0):
+    assert len(xs) == len(ys)
+    points = np.array([xs, ys])
+    now_x, now_y = 0.0, 0.0
+    step = initial_step
+    while True:
+        biases = [ (step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step) ]
+        current_count = (np.sum((points-[[now_x], [now_y]])**2, axis=0)**0.5 <= max(threshold, step)).sum()
+        better_bias_id = None
+        for bid, (x_bias, y_bias) in enumerate(biases):
+            x, y = now_x + x_bias, now_y + y_bias
+            bias_count = (np.sum((points-[[x], [y]])**2, axis=0)**0.5 <= max(threshold, step)).sum()
+            if bias_count > current_count:
+                current_count  = bias_count
+                better_bias_id = bid
+        if better_bias_id is not None:
+            # print(f"XY updated from ({now_x}, {now_y}) to ", end='')
+            now_x, now_y = now_x+biases[better_bias_id][0], now_y+biases[better_bias_id][1]
+            # print(f"({now_x}, {now_y})")
+        else:
+            # print(f"XY not updated from ({now_x}, {now_y}), step updated from {step} to {step/2}")
+            step /= 2.0
+        if step < 0.1: break
+    return now_x, now_y
+
+def find_best_bias_mean(xs, ys, threshold, initial_step=16.0):
+    for _ in range(3):
+        x_mean, x_std = np.mean(xs), np.std(xs)
+        xs = list(filter(lambda x: x_mean-x_std*2<x<x_mean+x_std*2, xs))
+    for _ in range(3):
+        y_mean, y_std = np.mean(ys), np.std(ys)
+        ys = list(filter(lambda y: y_mean-y_std*2<y<y_mean+y_std*2, ys))
+    return np.mean(xs), np.mean(ys)
+
 def plot_pose_and_location():
-    truth_columns = [ "HitFrame", "Hitter", "HitterLocationX", "HitterLocationY",
+
+    from data.background.classification import train_img_to_background
+
+    truth_columns = [ "HitFrame", "Hitter", "LandingX", "LandingY",
+                                            "HitterLocationX", "HitterLocationY",
                                             "DefenderLocationX", "DefenderLocationY" ]
     # pose_columns  = [ "Player A right_ankle X", "Player A right_ankle Y",
     #                   "Player B right_ankle X", "Player B right_ankle Y" ]
@@ -758,43 +758,352 @@ def plot_pose_and_location():
     # pose_columns  = [ "Player A right_small_toe X", "Player A right_small_toe Y",
     #                   "Player B right_small_toe X", "Player B right_small_toe Y" ]
     
-    total_hit_diff,  total_def_diff  = [], []
-    total_hit_score, total_def_score = [], []
-
+    pAraX_gts = { k: [] for k in range(13) }
+    pAraY_gts = { k: [] for k in range(13) }
+    pBraX_gts = { k: [] for k in range(13) }
+    pBraY_gts = { k: [] for k in range(13) }
+    ballX_gts = { k: [] for k in range(13) }
+    ballY_gts = { k: [] for k in range(13) }
     for video_id in tqdm(range(1, 800+1)):
-        truth_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[truth_columns].values
-        # pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose.csv")[pose_columns].values
-        pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose_wholebody.csv")[pose_columns].values
 
-        hit_diff, def_diff = [], []
-        hit_score, def_score = [], []
-        for hit_frame, hitter, hit_x, hit_y, def_x, def_y in truth_df_values:
+        bg_id = train_img_to_background[video_id]
+
+        truth_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[truth_columns].values
+        pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose_wholebody.csv")[pose_columns].values
+        ball_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv")[["Adjusted X", "Adjusted Y"]].values
+
+        for hit_frame, hitter, ballX_gt, ballY_gt, hit_x, hit_y, def_x, def_y in truth_df_values:
+
             pAraX, pAraY, pBraX, pBraY = pose_df_values[hit_frame]
             if hitter=='A':
-                pred_hit_x, pred_hit_y = pAraX, pAraY
-                pred_def_x, pred_def_y = pBraX, pBraY
+                pAraX_gt, pAraY_gt, pBraX_gt, pBraY_gt = hit_x, hit_y, def_x, def_y
             else:
-                pred_hit_x, pred_hit_y = pBraX, pBraY
-                pred_def_x, pred_def_y = pAraX, pAraY
-            if not (np.isnan(pred_hit_x) or np.isnan(pred_hit_y)):
-                diff = ((pred_hit_x-hit_x)**2+(pred_hit_y-hit_y)**2)**0.5
-                hit_diff.append(diff)
-                hit_score.append(diff<10)
-            if not (np.isnan(pred_def_x) or np.isnan(pred_def_y)):
-                diff = ((pred_def_x-def_x)**2+(pred_def_y-def_y)**2)**0.5
-                def_diff.append(diff)
-                def_score.append(diff<10)
+                pAraX_gt, pAraY_gt, pBraX_gt, pBraY_gt = def_x, def_y, hit_x, hit_y
+            if not np.isnan(pAraX):
+                pAraX_gts[bg_id].append(pAraX_gt-pAraX)
+                pAraY_gts[bg_id].append(pAraY_gt-pAraY)
+            if not np.isnan(pBraX):
+                pBraX_gts[bg_id].append(pBraX_gt-pBraX)
+                pBraY_gts[bg_id].append(pBraY_gt-pBraY)
+            ballX, ballY = ball_df_values[hit_frame]
 
-        # print(video_id, def_diff, def_score)
-        total_hit_diff.append(sum(hit_diff)/len(truth_df_values))
-        total_def_diff.append(sum(def_diff)/len(truth_df_values))
-        total_hit_score.append(sum(hit_score)/len(truth_df_values))
-        total_def_score.append(sum(def_score)/len(truth_df_values))
+            if not np.isnan(ballX):
+                ballX_gts[bg_id].append(ballX_gt-ballX)
+                ballY_gts[bg_id].append(ballY_gt-ballY)
 
-    print("total_hit_diff :", sum(total_hit_diff)/800)
-    print("total_def_diff :", sum(total_def_diff)/800)
-    print("total_hit_score:", sum(total_hit_score)/800)
-    print("total_def_score:", sum(total_def_score)/800)
+    import matplotlib.patches as patches
+    fig = plt.figure(figsize=(39, 18))
+    for bg_id in range(13):
+
+        ax = fig.add_subplot(6, 13, (bg_id+1))
+        ax.scatter(pAraX_gts[bg_id], pAraY_gts[bg_id], c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec='b', ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        ax = fig.add_subplot(6, 13, (bg_id+1)+1*13)
+        ax.scatter(pBraX_gts[bg_id], pBraY_gts[bg_id], c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec='b', ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        # pAbiasX, pAbiasY = find_best_bias_greedy(pAraX_gts[bg_id], pAraY_gts[bg_id], 10.0)
+        pAbiasX, pAbiasY = find_best_bias_mean(pAraX_gts[bg_id], pAraY_gts[bg_id], 10.0)
+        # pAbiasX, pAbiasY = np.mean(pAraX_gts[bg_id]), np.mean(pAraY_gts[bg_id])
+        ax = fig.add_subplot(6, 13, (bg_id+1)+2*13)
+        ax.scatter(np.array(pAraX_gts[bg_id])-pAbiasX, np.array(pAraY_gts[bg_id])-pAbiasY, c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec='g', ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        # pBbiasX, pBbiasY = find_best_bias_greedy(pBraX_gts[bg_id], pBraY_gts[bg_id], 10.0)
+        pBbiasX, pBbiasY = find_best_bias_mean(pBraX_gts[bg_id], pBraY_gts[bg_id], 10.0)
+        # pBbiasX, pBbiasY = np.mean(pBraX_gts[bg_id]), np.mean(pBraY_gts[bg_id])
+        ax = fig.add_subplot(6, 13, (bg_id+1)+3*13)
+        ax.scatter(np.array(pBraX_gts[bg_id])-pBbiasX, np.array(pBraY_gts[bg_id])-pBbiasY, c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec='g', ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+        
+        ax = fig.add_subplot(6, 13, (bg_id+1)+4*13)
+        ax.scatter(ballX_gts[bg_id], ballY_gts[bg_id], c='r', s=2)
+        ax.add_artist(patches.Circle((0,0), 6, ec='b', ls="--", lw=1, fill=False))
+        ax.set_xlim((-100,100))
+        ax.set_ylim((-100,100))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        # BbiasX, BbiasY = find_best_bias_greedy(ballX_gts[bg_id], ballY_gts[bg_id], 6.0, 64.0)
+        BbiasX, BbiasY = find_best_bias_mean(ballX_gts[bg_id], ballY_gts[bg_id], 6.0, 64.0)
+        # BbiasX, BbiasY = np.mean(ballX_gts[bg_id]), np.mean(ballY_gts[bg_id])
+        ax = fig.add_subplot(6, 13, (bg_id+1)+5*13)
+        ax.scatter(np.array(ballX_gts[bg_id])-BbiasX, np.array(ballY_gts[bg_id])-BbiasY, c='r', s=2)
+        ax.add_artist(patches.Circle((0,0), 6, ec='g', ls="--", lw=1, fill=False))
+        ax.set_xlim((-100,100))
+        ax.set_ylim((-100,100))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        print(f"{str(bg_id)+':':3} 'A': [ {pAbiasX:6.2f}, {pAbiasY:6.2f} ], 'B': [ {pBbiasX:6.2f}, {pBbiasY:6.2f} ]")  # , 'O': [ {BbiasX:6.2f}, {BbiasY:6.2f} ]")
+
+    # plt.suptitle(f"", fontsize=16)
+    plt.tight_layout()
+    plt.savefig(f"analysis/xy_biases_mean.png")
+    # plt.show()
+    plt.close()
+    return
+
+def plot_pose_and_location_v2():
+
+    from data.background.classification import train_img_to_background
+
+    truth_columns = [ "HitFrame", "Hitter", "LandingX", "LandingY",
+                                            "HitterLocationX", "HitterLocationY",
+                                            "DefenderLocationX", "DefenderLocationY" ]
+    pose_columns  = [ "Player A right_ankle X", "Player A right_ankle Y",
+                      "Player A right_big_toe X", "Player A right_big_toe Y",
+                      "Player B right_ankle X", "Player B right_ankle Y",
+                      "Player B right_big_toe X", "Player B right_big_toe Y" ]
+    
+    pArbtX_gts = { k: [] for k in range(13) }
+    pArbtY_gts = { k: [] for k in range(13) }
+    pAraX_gts  = { k: [] for k in range(13) }
+    pAraY_gts  = { k: [] for k in range(13) }
+    pBrbtX_gts = { k: [] for k in range(13) }
+    pBrbtY_gts = { k: [] for k in range(13) }
+    pBraX_gts  = { k: [] for k in range(13) }
+    pBraY_gts  = { k: [] for k in range(13) }
+    ballX_gts  = { k: [] for k in range(13) }
+    ballY_gts  = { k: [] for k in range(13) }
+    for video_id in tqdm(range(1, 800+1)):
+
+        bg_id = train_img_to_background[video_id]
+
+        truth_df_values = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_S2.csv")[truth_columns].values
+        pose_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_pose_wholebody.csv")[pose_columns].values
+        ball_df_values  = pd.read_csv(f"data/train/{video_id:05}/{video_id:05}_ball_33_adj.csv")[["Adjusted X", "Adjusted Y"]].values
+
+        for hit_frame, hitter, ballX_gt, ballY_gt, hit_x, hit_y, def_x, def_y in truth_df_values:
+
+            pAraX, pAraY, pArbtX, pArbtY, pBraX, pBraY, pBrbtX, pBrbtY = pose_df_values[hit_frame]
+            if hitter=='A':
+                pArbtX_gt, pArbtY_gt, pBrbtX_gt, pBrbtY_gt = hit_x, hit_y, def_x, def_y
+            else:
+                pArbtX_gt, pArbtY_gt, pBrbtX_gt, pBrbtY_gt = def_x, def_y, hit_x, hit_y
+
+            if not np.isnan(pArbtX):
+                pArbtX_gts[bg_id].append(pArbtX_gt-pArbtX)
+                pArbtY_gts[bg_id].append(pArbtY_gt-pArbtY)
+                pAraX_gts[bg_id].append(pAraX-pArbtX)
+                pAraY_gts[bg_id].append(pAraY-pArbtY)
+
+            if not np.isnan(pBrbtX):
+                pBrbtX_gts[bg_id].append(pBrbtX_gt-pBrbtX)
+                pBrbtY_gts[bg_id].append(pBrbtY_gt-pBrbtY)
+                pBraX_gts[bg_id].append(pBraX-pBrbtX)
+                pBraY_gts[bg_id].append(pBraY-pBrbtY)
+
+            ballX, ballY = ball_df_values[hit_frame]
+            if not np.isnan(ballX):
+                ballX_gts[bg_id].append(ballX_gt-ballX)
+                ballY_gts[bg_id].append(ballY_gt-ballY)
+
+    import matplotlib.patches as patches
+    fig = plt.figure(figsize=(39, 18))
+    for bg_id in range(13):
+
+        ax = fig.add_subplot(6, 13, (bg_id+1))
+        ax.scatter(pAraX_gts[bg_id], pAraY_gts[bg_id], c='g', s=0.05)
+        ax.scatter(pArbtX_gts[bg_id], pArbtY_gts[bg_id], c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec='b', ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        ax = fig.add_subplot(6, 13, (bg_id+1)+1*13)
+        ax.scatter(pBraX_gts[bg_id], pBraY_gts[bg_id], c='g', s=0.05)
+        ax.scatter(pBrbtX_gts[bg_id], pBrbtY_gts[bg_id], c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec='b', ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        # pAbiasX, pAbiasY = find_best_bias_greedy(pArbtX_gts[bg_id], pArbtY_gts[bg_id], 10.0)
+        pAbiasX, pAbiasY = find_best_bias_mean(pArbtX_gts[bg_id], pArbtY_gts[bg_id], 10.0)
+        # pAbiasX, pAbiasY = np.mean(pArbtX_gts[bg_id]), np.mean(pArbtY_gts[bg_id])
+        ax = fig.add_subplot(6, 13, (bg_id+1)+2*13)
+        ax.scatter(np.array(pAraX_gts[bg_id])-pAbiasX, np.array(pAraY_gts[bg_id])-pAbiasY, c='g', s=0.05)
+        ax.scatter(np.array(pArbtX_gts[bg_id])-pAbiasX, np.array(pArbtY_gts[bg_id])-pAbiasY, c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec="black", ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        # pBbiasX, pBbiasY = find_best_bias_greedy(pBrbtX_gts[bg_id], pBrbtY_gts[bg_id], 10.0)
+        pBbiasX, pBbiasY = find_best_bias_mean(pBrbtX_gts[bg_id], pBrbtY_gts[bg_id], 10.0)
+        # pBbiasX, pBbiasY = np.mean(pBrbtX_gts[bg_id]), np.mean(pBrbtY_gts[bg_id])
+        ax = fig.add_subplot(6, 13, (bg_id+1)+3*13)
+        ax.scatter(np.array(pBraX_gts[bg_id])-pBbiasX, np.array(pBraY_gts[bg_id])-pBbiasY, c='g', s=0.05)
+        ax.scatter(np.array(pBrbtX_gts[bg_id])-pBbiasX, np.array(pBrbtY_gts[bg_id])-pBbiasY, c='r', s=0.05)
+        ax.add_artist(patches.Circle((0,0), 10, ec="black", ls="--", lw=1, fill=False))
+        ax.set_xlim((-20,20))
+        ax.set_ylim((-20,20))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+        
+        ax = fig.add_subplot(6, 13, (bg_id+1)+4*13)
+        ax.scatter(ballX_gts[bg_id], ballY_gts[bg_id], c='r', s=2)
+        ax.add_artist(patches.Circle((0,0), 6, ec='b', ls="--", lw=1, fill=False))
+        ax.set_xlim((-100,100))
+        ax.set_ylim((-100,100))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        # BbiasX, BbiasY = find_best_bias_greedy(ballX_gts[bg_id], ballY_gts[bg_id], 6.0, 64.0)
+        BbiasX, BbiasY = find_best_bias_mean(ballX_gts[bg_id], ballY_gts[bg_id], 6.0, 64.0)
+        # BbiasX, BbiasY = np.mean(ballX_gts[bg_id]), np.mean(ballY_gts[bg_id])
+        ax = fig.add_subplot(6, 13, (bg_id+1)+5*13)
+        ax.scatter(np.array(ballX_gts[bg_id])-BbiasX, np.array(ballY_gts[bg_id])-BbiasY, c='r', s=2)
+        ax.add_artist(patches.Circle((0,0), 6, ec='g', ls="--", lw=1, fill=False))
+        ax.set_xlim((-100,100))
+        ax.set_ylim((-100,100))
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.grid()
+
+        print(f"{str(bg_id)+':':3} 'A': [ {pAbiasX:6.2f}, {pAbiasY:6.2f} ], 'B': [ {pBbiasX:6.2f}, {pBbiasY:6.2f} ], 'O': [ {BbiasX:6.2f}, {BbiasY:6.2f} ]")
+
+    # plt.suptitle(f"", fontsize=16)
+    plt.tight_layout()
+    plt.savefig(f"analysis/xy_biases_v2_mean.png")
+    # plt.show()
+    plt.close()
+    return
+
+def combine_answers():
+    
+    from data.background.classification import background_biases_greedy, background_biases_mean
+    from data.background.classification import valid_img_to_background, test_img_to_background
+
+    dfs = []
+    valid_pbar, test_pbar = tqdm(range(1, 169+1)), tqdm(range(170, 399+1))
+    for mode, pbar, img_to_background in [
+        ("valid", valid_pbar, valid_img_to_background),
+        ("test",  test_pbar,  test_img_to_background)
+    ]:
+        for video_id in pbar:
+
+            pred_df = pd.read_csv(f"data/{mode}/{video_id:05}/{video_id:05}_prediction_9_winner.csv")
+            pred_df["VideoName"] = [f"{video_id:05}.mp4"]*len(pred_df)
+
+            ball_df_values = pd.read_csv(f"data/{mode}/{video_id:05}/{video_id:05}_ball_33_adj.csv")[["Adjusted X", "Adjusted Y"]].values
+            ball_df_values = np.nan_to_num(ball_df_values, nan=1.0)
+
+            pose_columns   = [ "Player A right_big_toe X", "Player A right_big_toe Y",
+                               "Player B right_big_toe X", "Player B right_big_toe Y" ]
+            pose_df_values = pd.read_csv(f"data/{mode}/{video_id:05}/{video_id:05}_pose_wholebody.csv")[pose_columns].values
+            pose_df_values = np.nan_to_num(pose_df_values, nan=1.0)
+            landing_xs,           landing_ys           = [], []
+            hitter_location_xs,   hitter_location_ys   = [], []
+            defender_location_xs, defender_location_ys = [], []
+
+            for hit_frame, hitter in pred_df[["HitFrame", "Hitter"]].values:
+
+                bg_id = img_to_background[video_id]
+                if bg_id == 13: bg_id = 11
+
+                ballX, ballY = ball_df_values[hit_frame]
+                ball_bias = background_biases_greedy[bg_id]['O']
+                ballX, ballY = ballX+ball_bias[0], ballY+ball_bias[1]
+                if ballX == 0: ballX = 1
+                if ballY == 0: ballY = 1
+                landing_xs.append(round(ballX))
+                landing_ys.append(round(ballY))
+
+                pArbtX, pArbtY, pBrbtX, pBrbtY = pose_df_values[hit_frame]
+                pA_bias = background_biases_mean[bg_id]['A']
+                pB_bias = background_biases_mean[bg_id]['B']
+                pArbtX, pArbtY = pArbtX+pA_bias[0], pArbtY+pA_bias[1]
+                pBrbtX, pBrbtY = pBrbtX+pB_bias[0], pBrbtY+pB_bias[1]
+                pArbtX = round(pArbtX)
+                pArbtY = round(pArbtY)
+                pBrbtX = round(pBrbtX)
+                pBrbtY = round(pBrbtY)
+                if hitter == 'A':
+                    hitter_location_xs.append(pArbtX)
+                    hitter_location_ys.append(pArbtY)
+                    defender_location_xs.append(pBrbtX)
+                    defender_location_ys.append(pBrbtY)
+                elif hitter == 'B':
+                    hitter_location_xs.append(pBrbtX)
+                    hitter_location_ys.append(pBrbtY)
+                    defender_location_xs.append(pArbtX)
+                    defender_location_ys.append(pArbtY)
+                else:
+                    raise Exception
+
+            pred_df["LandingX"]          = landing_xs
+            pred_df["LandingY"]          = landing_ys
+            pred_df["HitterLocationX"]   = hitter_location_xs
+            pred_df["HitterLocationY"]   = hitter_location_ys
+            pred_df["DefenderLocationX"] = defender_location_xs
+            pred_df["DefenderLocationY"] = defender_location_ys
+            dfs.append(pred_df)
+
+    dfs = pd.concat(dfs)
+    dfs = pd.DataFrame({
+        "VideoName"        : dfs[["VideoName"]].values.squeeze(),
+        "ShotSeq"          : dfs[["ShotSeq"]].values.squeeze(),
+        "HitFrame"         : dfs[["HitFrame"]].values.squeeze(),
+        "Hitter"           : dfs[["Hitter"]].values.squeeze(),
+        "RoundHead"        : dfs[["RoundHead"]].values.squeeze(),
+        "Backhand"         : dfs[["Backhand"]].values.squeeze(),
+        "BallHeight"       : dfs[["BallHeight"]].values.squeeze(),
+        "BallType"         : dfs[["BallType"]].values.squeeze(),
+        "LandingX"         : dfs[["LandingX"]].values.squeeze(),
+        "LandingY"         : dfs[["LandingY"]].values.squeeze(),
+        "HitterLocationX"  : dfs[["HitterLocationX"]].values.squeeze(),
+        "HitterLocationY"  : dfs[["HitterLocationY"]].values.squeeze(),
+        "DefenderLocationX": dfs[["DefenderLocationX"]].values.squeeze(),
+        "DefenderLocationY": dfs[["DefenderLocationY"]].values.squeeze(),
+        "Winner"           : dfs[["Winner"]].values.squeeze(),
+    })
+    dfs = dfs.set_index("VideoName")
+    dfs.to_csv("outputs/final_answer.csv")
     return
 
 # ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== #
@@ -828,5 +1137,9 @@ if __name__ == "__main__":
     # patch_classification()
     # analyze_last_shot()
     # statisticize_pose_and_location_diff()
-    # fill_blank()
+    # total_frames()
+    # calculate_1_hitter_accuracy()
+    # plot_pose_and_location()
+    # plot_pose_and_location_v2()
+    combine_answers()
     pass

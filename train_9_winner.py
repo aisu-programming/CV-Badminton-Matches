@@ -230,12 +230,12 @@ if __name__ == "__main__":
     DEFAULT_SAVE_DIR = f"logs/{DEFAULT_MODE}/9_winner/{time.strftime('%Y.%m.%d-%H.%M.%S', time.localtime())}"
     parser = argparse.ArgumentParser()
     parser.add_argument("-m",  "--mode",          type=str,   default=DEFAULT_MODE)
-    parser.add_argument("-e",  "--epochs",        type=int,   default=150)
+    parser.add_argument("-e",  "--epochs",        type=int,   default=200)
     parser.add_argument("-lr", "--learning-rate", type=float, default=3e-3)
-    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.9975)
-    parser.add_argument("-bs", "--batch-size",    type=int,   default=128)
+    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.998)
+    parser.add_argument("-bs", "--batch-size",    type=int,   default=64)
     parser.add_argument("-nw", "--num-workers",   type=int,   default=4)
-    parser.add_argument("-l",  "--length",        type=int,   default=91)
+    parser.add_argument("-l",  "--length",        type=int,   default=151)
     parser.add_argument("-d",  "--device",        type=str,   default=DEFAULT_DEVICE)
     parser.add_argument("-sd", "--save-dir",      type=str, default=DEFAULT_SAVE_DIR)
 

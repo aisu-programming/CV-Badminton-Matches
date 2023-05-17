@@ -22,7 +22,7 @@ MMDETECTION_CHECKPOINT  = "https://download.openmmlab.com/mmdetection/v2.0/faste
 MMPOSE_CONFIG_FILE = "mmpose/configs/wholebody/2d_kpt_sview_rgb_img/topdown_heatmap/coco-wholebody/hrnet_w48_coco_wholebody_384x288_dark_plus.py"
 MMPOSE_CHECKPOINT  = "https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w48_coco_wholebody_384x288_dark-f5726563_20200918.pth"
 
-DEVICE     = "cuda:0"
+DEVICE     = "cuda:1"
 DET_CAT_ID = 1
 BBOX_THR   = 0.3
 KPT_THR    = 0.3
@@ -149,7 +149,7 @@ def main(video_id, mode, output_video=False):
         condition_values = (left_ratio, left_constant, right_ratio, right_constant)
 
         previous_player_pose = { 'A': None, 'B': None }
-        for frame_id, current_frame in tqdm(enumerate(video), desc=f"[{mode}] {video_id:05}.mp4: Detecting wholebody pose", total=len(video)):
+        for frame_id, current_frame in tqdm(enumerate(video), desc=f"[{mode}] {video_id:05} - Detecting wholebody pose", total=len(video)):
 
             # Eliminate frames with other perspectives before or after the game
             diff = ((np.array(current_frame, dtype=np.float32) - np.array(bg_img, dtype=np.float32)) **2 /1000000).sum()
@@ -161,6 +161,7 @@ def main(video_id, mode, output_video=False):
                 mmdet_results = inference_detector(DET_MODEL, current_frame)
                 # keep the person class bounding boxes.
                 person_results = process_mmdet_results(mmdet_results, DET_CAT_ID)
+                person_results = list(filter(lambda person: person["bbox"][4] > 0.7, person_results))
                 person_results = list(filter(
                     lambda person: (person["bbox"][2]-person["bbox"][0])*(person["bbox"][3]-person["bbox"][1]) > 500, person_results))
                 person_results = list(filter(
@@ -193,17 +194,17 @@ def main(video_id, mode, output_video=False):
                                 pose_results.append(player_pose[player_id])
                                 previous_player_pose[player_id] = player_pose[player_id]
                     else:
-                        # if mode == "train" and video_id == 195 and frame_id == 0:
-                        #     pose_results = sorted(pose_results[:2], key=lambda person: person["bbox"][3])  # sort by bottom Y
-                        #     player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
-                        #     previous_player_pose['A'] = player_pose['A']
-                        #     previous_player_pose['B'] = player_pose['B']
+                        if mode == "train" and video_id == 411 and frame_id == 0:
+                            pose_results = sorted(pose_results[:2], key=lambda person: person["bbox"][3])  # sort by bottom Y
+                            player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
+                            previous_player_pose['A'] = player_pose['A']
+                            previous_player_pose['B'] = player_pose['B']
                         # elif mode == "valid" and video_id == 92 and frame_id == 0:
                         #     pose_results = sorted(pose_results, key=lambda person: person["bbox"][3])[:2]  # sort by bottom Y
                         #     player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
                         #     previous_player_pose['A'] = player_pose['A']
                         #     previous_player_pose['B'] = player_pose['B']
-                        if mode == "test" and video_id == 304 and frame_id == 0:
+                        elif mode == "test" and video_id == 304 and frame_id == 0:
                             pose_results = sorted(pose_results[:2], key=lambda person: person["bbox"][3])  # sort by bottom Y
                             player_pose = { 'A': pose_results[0], 'B': pose_results[1] }
                             previous_player_pose['A'] = player_pose['A']
@@ -265,13 +266,16 @@ def main(video_id, mode, output_video=False):
 if __name__ == '__main__':
 
     assert MODE in [ "train", "valid", "test" ]
-    if   MODE == "train": video_id_list = list(range(1, 400+1))
-    # if   MODE == "train": video_id_list = list(range(400+1, 800+1))
+    # if   MODE == "train": video_id_list = list(range(1, 265+1))
+    # if   MODE == "train": video_id_list = list(range(265+1, 530+1))
+    # if   MODE == "train": video_id_list = list(range(530+1, 800+1))
+    if   MODE == "train": video_id_list = list(range(1, 800+1))
     elif MODE == "valid": video_id_list = list(range(1, 169+1))
     else                : video_id_list = list(range(170, 399+1))
 
     for video_id in video_id_list:
-        # if video_id < 304: continue
+        if video_id not in [ 190, 205, 216, 220, 223, 255, 259, 265,
+                             267, 281, 298, 299, 307, 320, 332, 336, 371, 382 ]: continue
         main(video_id, MODE, output_video=True)
     
     winsound.Beep(300, 1000)

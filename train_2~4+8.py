@@ -15,8 +15,8 @@ from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dataloader import ClassificationDataset
-from models import SingleOutputModel
+from dataloader import ClassificationDataset, BallTypeDataset
+from models import SingleOutputModel, BallTypeModel
 from misc import train_formal_list, train_informal_list
 
 
@@ -176,8 +176,12 @@ def main(args) -> None:
     with open(f"{args.save_dir}/valid_video_id_list.py", 'w') as file:
         json.dump(valid_video_id_list, file, indent=4)
 
-    my_train_dataset = ClassificationDataset(args.length, train_video_id_list, args.target)
-    my_valid_dataset = ClassificationDataset(args.length, valid_video_id_list, args.target)
+    if args.target != "BallType":
+        my_train_dataset = ClassificationDataset(args.length, train_video_id_list, args.target)
+        my_valid_dataset = ClassificationDataset(args.length, valid_video_id_list, args.target)
+    else:
+        my_train_dataset = BallTypeDataset(args.length, train_video_id_list)
+        my_valid_dataset = BallTypeDataset(args.length, valid_video_id_list)
     my_train_dataLoader = DataLoader(
         my_train_dataset, args.batch_size,
         shuffle=True, pin_memory=True, drop_last=True,
@@ -196,8 +200,11 @@ def main(args) -> None:
     valid_btc_avg      = sum(my_valid_dataset.ground_truth_count) / len(my_valid_dataset.ground_truth_count)
     valid_weight       = [ (valid_btc_avg/btc) for btc in my_valid_dataset.ground_truth_count ]
 
-    output_dim   = 2 if args.target != "BallType" else 9
-    model        = SingleOutputModel(length=args.length, output_dim=output_dim, softmax=True).to(args.device)
+    # output_dim   = 2 if args.target != "BallType" else 9
+    if args.target != "BallType":
+        model    = SingleOutputModel(length=args.length, output_dim=2, softmax=True).to(args.device)
+    else:
+        model    = BallTypeModel(length=args.length, softmax=True).to(args.device)
     criterion    = torch.nn.CrossEntropyLoss(weight=train_weight_torch)
     optimizer    = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.lr_decay)
@@ -240,18 +247,18 @@ if __name__ == "__main__":
     DEFAULT_TARGET   = "BallType"
 
     DEFAULT_MODE     = "all"
-    DEFAULT_DEVICE   = "cuda:0"
+    DEFAULT_DEVICE   = "cuda:1"
+    DEFAULT_LENGTH     = 11 if DEFAULT_TARGET != "BallType" else 45 # BallType (Recommended 45 / Maximum 51)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-t",  "--target",        type=str,   default=DEFAULT_TARGET)
     parser.add_argument("-m",  "--mode",          type=str,   default=DEFAULT_MODE)
-    parser.add_argument("-e",  "--epochs",        type=int,   default=150)
+    parser.add_argument("-e",  "--epochs",        type=int,   default=100)
     parser.add_argument("-lr", "--learning-rate", type=float, default=3e-3)
-    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.9975)
+    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.9985)
     parser.add_argument("-bs", "--batch-size",    type=int,   default=128)
     parser.add_argument("-nw", "--num-workers",   type=int,   default=4)
-    # parser.add_argument("-l",  "--length",        type=int,   default=11)  # Others
-    parser.add_argument("-l",  "--length",        type=int,   default=45)  # BallType (Recommended 45 / Maximum 51)
+    parser.add_argument("-l",  "--length",        type=int,   default=DEFAULT_LENGTH)  
     parser.add_argument("-d",  "--device",        type=str,   default=DEFAULT_DEVICE)
 
     args = parser.parse_args()

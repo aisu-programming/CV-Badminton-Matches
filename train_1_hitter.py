@@ -101,8 +101,12 @@ def train_epoch(model, dataloader, criterion, optimizer, lr_scheduler, device, l
         batch_pred  = batch_pred.cpu().detach().numpy()
 
         ao_batch_pred = np.argmax(batch_pred, axis=-1)                                    # argmaxed overall batch_pred
-        an_batch_pred = np.argmax(batch_pred, axis=-1)[:, (length//2-2):(length//2+2)+1]  # argmaxed  narrow batch_pred
-        n_batch_truth =                    batch_truth[:, (length//2-2):(length//2+2)+1]  #           narrow batch_truth
+        # an_batch_pred = np.argmax(batch_pred, axis=-1)[:, (length//2-2):(length//2+2)+1]  # argmaxed  narrow batch_pred
+        # n_batch_truth =                    batch_truth[:, (length//2-2):(length//2+2)+1]  #           narrow batch_truth
+        # an_batch_pred = np.argmax(batch_pred, axis=-1)[:, (length//2-1):(length//2+1)+1]  # argmaxed  narrow batch_pred
+        # n_batch_truth =                    batch_truth[:, (length//2-1):(length//2+1)+1]  #           narrow batch_truth
+        an_batch_pred = np.argmax(batch_pred, axis=-1)[:, length//2]  # argmaxed  narrow batch_pred
+        n_batch_truth =                    batch_truth[:, length//2]  #           narrow batch_truth
         oacc = weighted_acc(ao_batch_pred, batch_truth, acc_weight)
         oacc_metric.append(oacc)
         nacc = weighted_acc(an_batch_pred, n_batch_truth, acc_weight)
@@ -110,8 +114,9 @@ def train_epoch(model, dataloader, criterion, optimizer, lr_scheduler, device, l
 
         for bt, bp in zip(batch_truth, ao_batch_pred):
             ocms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
-        for bt, bp in zip(n_batch_truth, an_batch_pred):
-            ncms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
+        # for bt, bp in zip(n_batch_truth, an_batch_pred):
+        #     ncms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
+        ncms += confusion_matrix(n_batch_truth, an_batch_pred, labels=list(range(len(weight))))  # , sample_weight=weight)
 
         pbar.set_description(f"[TRAIN] loss: {loss_metric.avg():.5f}, " + \
                              f"Overall Acc: {oacc_metric.avg()*100:.3f}%, " + \
@@ -120,9 +125,9 @@ def train_epoch(model, dataloader, criterion, optimizer, lr_scheduler, device, l
 
     with np.printoptions(linewidth=160, formatter={'float': '{:5.03f}'.format, 'int': '{:2} '.format}):
         print("pred :", batch_pred[0, 0], batch_pred[0, 1], batch_pred[0, 2], batch_pred[0, 3])
-        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0, :40]))
-        print("truth:", batch_truth[0, :40])
-        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0, :40]])
+        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0, :35]))
+        print("truth:", batch_truth[0, :35])
+        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0, :35]])
 
     return loss_metric.avg(), oacc_metric.avg(), nacc_metric.avg(), ocms, ncms
 
@@ -146,8 +151,12 @@ def valid_epoch(model, dataloader, criterion, device, length, weight) -> None:
         batch_pred  = batch_pred.cpu().detach().numpy()
 
         ao_batch_pred = np.argmax(batch_pred, axis=-1)                                    # argmaxed overall batch_pred
-        an_batch_pred = np.argmax(batch_pred, axis=-1)[:, (length//2-2):(length//2+2)+1]  # argmaxed  narrow batch_pred
-        n_batch_truth =                    batch_truth[:, (length//2-2):(length//2+2)+1]  #           narrow batch_truth
+        # an_batch_pred = np.argmax(batch_pred, axis=-1)[:, (length//2-2):(length//2+2)+1]  # argmaxed  narrow batch_pred
+        # n_batch_truth =                    batch_truth[:, (length//2-2):(length//2+2)+1]  #           narrow batch_truth
+        # an_batch_pred = np.argmax(batch_pred, axis=-1)[:, (length//2-1):(length//2+1)+1]  # argmaxed  narrow batch_pred
+        # n_batch_truth =                    batch_truth[:, (length//2-1):(length//2+1)+1]  #           narrow batch_truth
+        an_batch_pred = np.argmax(batch_pred, axis=-1)[:, length//2]  # argmaxed  narrow batch_pred
+        n_batch_truth =                    batch_truth[:, length//2]  #           narrow batch_truth
         oacc = weighted_acc(ao_batch_pred, batch_truth, acc_weight)
         oacc_metric.append(oacc)
         nacc = weighted_acc(an_batch_pred, n_batch_truth, acc_weight)
@@ -155,8 +164,9 @@ def valid_epoch(model, dataloader, criterion, device, length, weight) -> None:
 
         for bt, bp in zip(batch_truth, ao_batch_pred):
             ocms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
-        for bt, bp in zip(n_batch_truth, an_batch_pred):
-            ncms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
+        # for bt, bp in zip(n_batch_truth, an_batch_pred):
+        #     ncms += confusion_matrix(bt, bp, labels=list(range(len(weight))))  # , sample_weight=weight)
+        ncms += confusion_matrix(n_batch_truth, an_batch_pred, labels=list(range(len(weight))))  # , sample_weight=weight)
 
         pbar.set_description(f"[VALID] loss: {loss_metric.avg():.5f}, " + \
                              f"Overall Acc: {oacc_metric.avg()*100:.3f}%, " + \
@@ -164,9 +174,9 @@ def valid_epoch(model, dataloader, criterion, device, length, weight) -> None:
 
     with np.printoptions(linewidth=160, formatter={'float': '{:5.03f}'.format, 'int': '{:2} '.format}):
         print("pred :", batch_pred[0, 0], batch_pred[0, 1], batch_pred[0, 2], batch_pred[0, 3])
-        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0, :40]))
-        print("truth:", batch_truth[0, :40])
-        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0, :40]])
+        print("pred :", np.round(np.argmax(batch_pred, axis=-1)[0, :35]))
+        print("truth:", batch_truth[0, :35])
+        print("corct:", np.array(["X", " "])[np.uint8(np.argmax(batch_pred, axis=-1)==batch_truth)[0, :35]])
         
     return loss_metric.avg(), oacc_metric.avg(), nacc_metric.avg(), ocms, ncms
 
@@ -185,9 +195,10 @@ def main(args) -> None:
     random.shuffle(video_id_list)
     train_video_id_list = video_id_list[:int(len(video_id_list)*0.8)]
     valid_video_id_list = video_id_list[int(len(video_id_list)*0.8):]
+    valid_video_id_list = sorted(valid_video_id_list)
     print(valid_video_id_list)
     with open(f"{args.save_dir}/valid_video_id_list.py", 'w') as file:
-        json.dump(valid_video_id_list, file, indent=4)
+        json.dump(valid_video_id_list, file)
 
     my_train_dataset = HitterDataset(train_video_id_list, args.sample, args.length)
     my_valid_dataset = HitterDataset(valid_video_id_list, args.sample, args.length)
@@ -216,6 +227,13 @@ def main(args) -> None:
 
     best_valid_loss, best_valid_oacc, best_valid_nacc = np.inf, 0, 0
     for epoch in range(1, args.epochs+1):
+
+        if epoch%5==0:
+            my_train_dataset.load_dataset()
+            my_train_dataLoader = DataLoader(
+                my_train_dataset, args.batch_size, shuffle=True, drop_last=True,
+                pin_memory=True, num_workers=args.num_workers)
+
         print(f"\n{epoch}/{args.epochs}")
         model = model.train()
         train_loss, train_oacc, train_nacc, train_ocm, train_ncm = \
@@ -267,8 +285,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m",  "--mode",          type=str,   default=DEFAULT_MODE)
     parser.add_argument("-e",  "--epochs",        type=int,   default=200)
-    parser.add_argument("-lr", "--learning-rate", type=float, default=7e-4)
-    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.9993)
+    parser.add_argument("-lr", "--learning-rate", type=float, default=5e-4)
+    parser.add_argument("-ld", "--lr-decay",      type=float, default=0.9992)
     parser.add_argument("-bs", "--batch-size",    type=int,   default=80)
     parser.add_argument("-nw", "--num-workers",   type=int,   default=4)
     parser.add_argument("-l",  "--length",        type=int,   default=45, help="Length of each sample")

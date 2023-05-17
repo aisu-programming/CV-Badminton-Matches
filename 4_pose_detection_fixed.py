@@ -162,6 +162,7 @@ def main(video_id, mode, output_video=False):
                 mmdet_results = inference_detector(DET_MODEL, current_frame)
                 # keep the person class bounding boxes.
                 person_results = process_mmdet_results(mmdet_results, DET_CAT_ID)
+                person_results = list(filter(lambda person: person["bbox"][4] > 0.8, person_results))
                 person_results = list(filter(
                     lambda person: (person["bbox"][2]-person["bbox"][0])*(person["bbox"][3]-person["bbox"][1]) > 500, person_results))
                 person_results = list(filter(
