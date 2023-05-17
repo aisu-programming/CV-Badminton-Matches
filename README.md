@@ -9,9 +9,9 @@ AI CUP 2023 - Teaching Computers to Watch Badminton Matches
 3. DIY: O
 
 ### Background Extraction
-1. DIT - "average_method": X
-2. DIT - "mode_method": X
-3. DIT - "average_method_with_masked_players": O
+1. DIY - "average_method": X
+2. DIY - "mode_method": X
+3. DIY - "average_method_with_masked_players": O
 
 ### Ball Detection
 1. Blob detection: X
@@ -27,7 +27,7 @@ AI CUP 2023 - Teaching Computers to Watch Badminton Matches
 2. Background Clustering (2_background_clustering.py)
 3. Ball Detection (3_ball_processing.py)
 4. Player Pose Detection (4_pose_detection_*.py)
-5. Train models for each columns (train_*.py)
+5. Train models for each columns (5_train_*.py)
 
 ## Predicting Procedure
-1. Predict answers of each columns by each models (predict_*.py)
+1. Predict answers of each columns by each models (6_predict_*.py)
