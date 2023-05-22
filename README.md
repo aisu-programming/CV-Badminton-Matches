@@ -22,6 +22,11 @@ AI CUP 2023 - Teaching Computers to Watch Badminton Matches
 (Backgound Extraction finished needed)
 - [MMDetection](https://github.com/open-mmlab/mmdetection) + [MMPose](https://github.com/open-mmlab/mmpose)
 
+## Install
+1. Run install_pytorch.sh or install the version you like
+2. Run install_mm.sh or manually install [MMDetection](https://github.com/open-mmlab/mmdetection) and [MMPose](https://github.com/open-mmlab/mmpose)
+3. Run install_tracknetv2.sh or manually install [TrackNetv2](https://nol.cs.nctu.edu.tw:234/open-source/TrackNetv2)
+
 ## Training Procedure
 1. Background Extraction (1_background_extraction.py)
 2. Background Clustering (2_background_clustering.py)

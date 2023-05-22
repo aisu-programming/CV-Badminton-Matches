@@ -162,8 +162,8 @@ def main(args) -> None:
 
     os.makedirs(args.save_dir, exist_ok=True)
     shutil.copy(__file__, args.save_dir)
-    shutil.copy("models.py", args.save_dir)
-    shutil.copy("dataloader.py", args.save_dir)
+    shutil.copy("libs/models.py", args.save_dir)
+    shutil.copy("libs/dataloader.py", args.save_dir)
     tensorboard = SummaryWriter(args.save_dir)
 
     if   args.mode ==   "formal": video_id_list = train_formal_list.copy()

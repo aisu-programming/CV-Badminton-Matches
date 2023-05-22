@@ -139,6 +139,10 @@ class HitterDataset(Dataset):
                     ball_datas    = np.concatenate([ ball_datas,    ball_filler ], axis=0)
                 assert ball_datas.shape == (self.length, 2)
 
+                # import os
+                # os.makedirs(f"outputs/{video_id:05}_{frame}_A", exist_ok=True)
+                # os.makedirs(f"outputs/{video_id:05}_{frame}_B", exist_ok=True)
+
                 # kpt_imgs = np.ones((2, self.length, 64, 64)) *0.5
                 kpt_imgs = np.zeros((2, self.length, 64, 64))
                 for fid, _f in enumerate(range(frame-hl, frame+hl+1)):
@@ -150,7 +154,8 @@ class HitterDataset(Dataset):
                         kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                         kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                         kpt_imgs[0, fid] = draw_limbs(kpts_x, kpts_y)
-                        # cv2.imshow(f"{video_id:05}_{hit_id}_A", cv2.resize(kpt_imgs[0, fid], (512, 512)))
+                        # cv2.imwrite(f"outputs/{video_id:05}_{frame}_A/{fid:03}.jpg", kpt_imgs[0, fid]*255)
+                        # cv2.imshow(f"{video_id:05}_{frame}_A", cv2.resize(kpt_imgs[0, fid], (512, 512)))
                         # cv2.waitKey(2)
                         # cv2.destroyAllWindows()
                         # for kpt_id in range(17): kpt_imgs[kpt_id+1, fid] = draw_kpts(kpts_x, kpts_y, kpt_id)
@@ -160,11 +165,13 @@ class HitterDataset(Dataset):
                         kpts_x = np.array(((kpts_x/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                         kpts_y = np.array(((kpts_y/2)+0.5) *60 +2, dtype=np.uint8).tolist()
                         kpt_imgs[1, fid] = draw_limbs(kpts_x, kpts_y)
-                        # cv2.imshow(f"{video_id:05}_{hit_id}_B", cv2.resize(kpt_imgs[1, fid], (512, 512)))
+                        # cv2.imwrite(f"outputs/{video_id:05}_{frame}_B/{fid:03}.jpg", kpt_imgs[1, fid]*255)
+                        # cv2.imshow(f"{video_id:05}_{frame}_B", cv2.resize(kpt_imgs[1, fid], (512, 512)))
                         # cv2.waitKey(2)
                         # cv2.destroyAllWindows()
                         # for kpt_id in range(17): kpt_imgs[kpt_id+18+1, fid] = draw_kpts(kpts_x, kpts_y, kpt_id)
 
+                # raise Exception
                 kpt_datas = np.concatenate([
                     np.expand_dims(np.nan_to_num(A_kpts_ori_xs, nan=0.0), axis=1),
                     np.expand_dims(np.nan_to_num(A_kpts_ori_ys, nan=0.0), axis=1),
