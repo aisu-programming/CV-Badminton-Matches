@@ -1,6 +1,9 @@
 # CV-Badminton-Matches
 AI CUP 2023 - Teaching Computers to Watch Badminton Matches
 
+## Model Architecture
+> ![image](https://raw.githubusercontent.com/aisu-programming/CV-Badminton-Matches/main/architecture.png)
+
 ## Install
 1. Run install_pytorch.sh or install the version you like
 2. Run install_mm.sh or manually install [MMDetection](https://github.com/open-mmlab/mmdetection) and [MMPose](https://github.com/open-mmlab/mmpose)
@@ -36,3 +39,6 @@ Predict answers of each columns by each models (6_predict_*.py) **step by step**
 ### Player Pose Detection
 (Backgound Extraction finished needed)
 - [MMDetection](https://github.com/open-mmlab/mmdetection) + [MMPose](https://github.com/open-mmlab/mmpose)
+
+## Others
+More content in [my report](https://github.com/aisu-programming/CV-Badminton-Matches/blob/main/report/AI%20CUP%20%E7%AB%B6%E8%B3%BD%E5%A0%B1%E5%91%8A%E8%88%87%E7%A8%8B%E5%BC%8F%E7%A2%BC%EF%BC%8FTEAM_2956%EF%BC%8F%E3%80%8C%E6%95%99%E9%9B%BB%E8%85%A6%E7%9C%8B%E7%BE%BD%E7%90%83%E3%80%8D%E7%AB%B6%E8%B3%BD.pdf) but in Chinese version
