@@ -1,6 +1,8 @@
 # CV-Badminton-Matches
 AI CUP 2023 - Teaching Computers to Watch Badminton Matches
 
+Awards: https://global.turingcerts.com/en/co/cert?hash=0x542087a0cba32a7e5cd03330a9bb02c46ba0fe8a437f0ec52ecf60b1274260780000
+
 ## Model Architecture
 > ![image](https://raw.githubusercontent.com/aisu-programming/CV-Badminton-Matches/main/architecture.png)
 
